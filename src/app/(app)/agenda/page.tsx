@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { requireAuthSession } from "@/lib/auth/session";
-import { getRepository } from "@/lib/data";
-import { EVENT_STATUS_LABELS, type EventStatus } from "@/lib/domain/types";
+import { getRepository, type Repository } from "@/lib/data";
+import { EVENT_STATUS_LABELS, type EventStatus, type Reservation } from "@/lib/domain/types";
 import { Card, CardHeader, Badge, EmptyState } from "@/components/ui/primitives";
 import { ButtonLink } from "@/components/ui/Button";
 import { formatDate, formatTime } from "@/lib/format";
+
+type AgendaEntry = Awaited<ReturnType<Repository["events"]["listForAgenda"]>>[number];
 
 const STATUS_TONE: Record<EventStatus, "brand" | "success" | "warning" | "danger" | "neutral" | "info"> = {
   rascunho: "neutral",
@@ -16,11 +18,24 @@ const STATUS_TONE: Record<EventStatus, "brand" | "success" | "warning" | "danger
   cancelado: "danger",
 };
 
+const LEGEND_ITEMS: { label: string; swatchClass: string }[] = [
+  { label: "Rascunho / Concluído", swatchClass: "bg-surface-muted border border-border" },
+  { label: "Planejamento", swatchClass: "bg-info-50 border border-info-500/40" },
+  { label: "Aguardando aprovação", swatchClass: "bg-warning-50 border border-warning-500/40" },
+  { label: "Confirmado", swatchClass: "bg-brand-50 border border-brand-300" },
+  { label: "Em execução", swatchClass: "bg-success-50 border border-success-500/40" },
+  { label: "Cancelado", swatchClass: "bg-danger-50 border border-danger-500/40" },
+];
+
 interface SearchParams {
   view?: "mes" | "lista";
   month?: string; // YYYY-MM
   day?: string; // YYYY-MM-DD
 }
+
+type EventDayItem = { kind: "event"; id: string; event: AgendaEntry["event"]; sessions: AgendaEntry["sessions"] };
+type ReservationDayItem = { kind: "reservation"; id: string; reservation: Reservation; spaceName: string };
+type DayItem = EventDayItem | ReservationDayItem;
 
 export default async function AgendaPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const session = await requireAuthSession();
@@ -40,19 +55,34 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
   const gridEnd = new Date(rangeEnd);
   gridEnd.setDate(gridEnd.getDate() + (6 - gridEnd.getDay()));
 
-  const items = await repository.events.listForAgenda(session, {
-    from: gridStart.toISOString(),
-    to: gridEnd.toISOString(),
-  });
+  const [items, standaloneReservations, spaces] = await Promise.all([
+    repository.events.listForAgenda(session, { from: gridStart.toISOString(), to: gridEnd.toISOString() }),
+    repository.reservations.list(session, {
+      eventId: null,
+      dataInicial: gridStart.toISOString(),
+      dataFinal: gridEnd.toISOString(),
+    }),
+    repository.spaces.list(session),
+  ]);
+  const spaceById = new Map(spaces.map((s) => [s.id, s]));
 
-  const byDay = new Map<string, typeof items>();
+  const byDay = new Map<string, DayItem[]>();
   for (const item of items) {
     for (const s of item.sessions) {
       const key = new Date(s.inicio).toDateString();
       const list = byDay.get(key) ?? [];
-      if (!list.some((l) => l.event.id === item.event.id)) list.push(item);
+      if (!list.some((l) => l.kind === "event" && l.event.id === item.event.id)) {
+        list.push({ kind: "event", id: item.event.id, event: item.event, sessions: item.sessions });
+      }
       byDay.set(key, list);
     }
+  }
+  for (const reservation of standaloneReservations) {
+    if (reservation.status === "cancelada") continue;
+    const key = new Date(reservation.inicio).toDateString();
+    const list = byDay.get(key) ?? [];
+    list.push({ kind: "reservation", id: reservation.id, reservation, spaceName: spaceById.get(reservation.spaceId)?.nome ?? "Espaço" });
+    byDay.set(key, list);
   }
 
   const days: Date[] = [];
@@ -72,7 +102,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-semibold text-[var(--foreground)] capitalize">{monthLabel}</h1>
-          <p className="text-sm text-fg-muted">Agenda de eventos e sessões.</p>
+          <p className="text-sm text-fg-muted">Agenda de eventos, sessões e reservas.</p>
         </div>
         <div className="flex items-center gap-2">
           <ButtonLink href={monthHref(prevMonth, view)} variant="secondary" size="sm">
@@ -101,6 +131,22 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-fg-muted">
+        {LEGEND_ITEMS.map((item) => (
+          <span key={item.label} className="flex items-center gap-1.5">
+            <span className={`h-2.5 w-2.5 rounded-sm ${item.swatchClass}`} aria-hidden="true" />
+            {item.label}
+          </span>
+        ))}
+        <span className="flex items-center gap-1.5">
+          <span aria-hidden="true">★</span> Estratégico
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm border border-dashed border-fg-muted" aria-hidden="true" />
+          Reserva sem evento vinculado
+        </span>
+      </div>
+
       {view === "mes" ? (
         <div className="grid lg:grid-cols-3 gap-6">
           <Card className="lg:col-span-2 overflow-hidden">
@@ -126,14 +172,24 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
                     } ${params.day === dayParam ? "ring-2 ring-inset ring-brand-500" : ""}`}
                   >
                     <span className={`font-medium ${isToday ? "text-brand-700" : ""}`}>{day.getDate()}</span>
-                    {dayItems.slice(0, 2).map(({ event }) => (
-                      <span
-                        key={event.id}
-                        className="truncate rounded px-1 py-0.5 bg-brand-50 text-brand-700 text-[10px] leading-tight"
-                      >
-                        {event.titulo}
-                      </span>
-                    ))}
+                    {dayItems.slice(0, 2).map((item) =>
+                      item.kind === "event" ? (
+                        <span
+                          key={item.id}
+                          className={`truncate rounded px-1 py-0.5 text-[10px] leading-tight ${chipClass(item.event.status)}`}
+                        >
+                          {item.event.estrategico && "★ "}
+                          {item.event.titulo}
+                        </span>
+                      ) : (
+                        <span
+                          key={item.id}
+                          className="truncate rounded px-1 py-0.5 text-[10px] leading-tight border border-dashed border-fg-muted text-fg-muted"
+                        >
+                          {item.spaceName}
+                        </span>
+                      ),
+                    )}
                     {dayItems.length > 2 && (
                       <span className="text-[10px] text-fg-muted">+{dayItems.length - 2} mais</span>
                     )}
@@ -146,33 +202,44 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
           <Card>
             <CardHeader title={selectedDay ? formatDate(selectedDay.toISOString()) : "Selecione um dia"} />
             {!selectedDay ? (
-              <EmptyState title="Clique em um dia no calendário para ver os eventos." />
+              <EmptyState title="Clique em um dia no calendário para ver os eventos e reservas." />
             ) : selectedDayItems.length === 0 ? (
-              <EmptyState title="Nenhum evento neste dia." />
+              <EmptyState title="Nenhum evento ou reserva neste dia." />
             ) : (
               <ul className="divide-y divide-border-subtle">
-                {selectedDayItems.map(({ event, sessions }) => (
-                  <li key={event.id} className="px-5 py-3">
-                    <Link href={`/eventos/${event.id}`} className="text-sm font-medium text-[var(--foreground)] hover:text-brand-700">
-                      {event.titulo}
-                    </Link>
-                    <p className="text-xs text-fg-muted">
-                      {sessions.map((s) => formatTime(s.inicio)).join(", ")}
-                    </p>
-                    <Badge tone={STATUS_TONE[event.status]} className="mt-1">
-                      {EVENT_STATUS_LABELS[event.status]}
-                    </Badge>
-                  </li>
-                ))}
+                {selectedDayItems.map((item) =>
+                  item.kind === "event" ? (
+                    <li key={item.id} className="px-5 py-3">
+                      <Link href={`/eventos/${item.event.id}`} className="text-sm font-medium text-[var(--foreground)] hover:text-brand-700">
+                        {item.event.estrategico && "★ "}
+                        {item.event.titulo}
+                      </Link>
+                      <p className="text-xs text-fg-muted">{item.sessions.map((s) => formatTime(s.inicio)).join(", ")}</p>
+                      <Badge tone={STATUS_TONE[item.event.status]} className="mt-1">
+                        {EVENT_STATUS_LABELS[item.event.status]}
+                      </Badge>
+                    </li>
+                  ) : (
+                    <li key={item.id} className="px-5 py-3">
+                      <Link href={`/reservas/${item.reservation.id}`} className="text-sm font-medium text-[var(--foreground)] hover:text-brand-700">
+                        {item.spaceName} — {item.reservation.motivo}
+                      </Link>
+                      <p className="text-xs text-fg-muted">{formatTime(item.reservation.inicio)}</p>
+                      <Badge tone="neutral" className="mt-1">
+                        Reserva sem evento
+                      </Badge>
+                    </li>
+                  ),
+                )}
               </ul>
             )}
           </Card>
         </div>
       ) : (
         <Card>
-          <CardHeader title="Eventos do período" />
-          {items.length === 0 ? (
-            <EmptyState title="Nenhum evento no período." />
+          <CardHeader title="Eventos e reservas do período" />
+          {items.length === 0 && standaloneReservations.length === 0 ? (
+            <EmptyState title="Nenhum evento ou reserva no período." />
           ) : (
             <ul className="divide-y divide-border-subtle">
               {[...items]
@@ -181,13 +248,28 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
                   <li key={event.id} className="px-5 py-3 flex items-center justify-between gap-4 flex-wrap">
                     <div>
                       <Link href={`/eventos/${event.id}`} className="text-sm font-medium text-[var(--foreground)] hover:text-brand-700">
+                        {event.estrategico && "★ "}
                         {event.titulo}
                       </Link>
                       <p className="text-xs text-fg-muted">
                         {sessions.map((s) => `${formatDate(s.inicio)} ${formatTime(s.inicio)}`).join(" · ")}
                       </p>
                     </div>
-                    <Badge tone="brand">{EVENT_STATUS_LABELS[event.status]}</Badge>
+                    <Badge tone={STATUS_TONE[event.status]}>{EVENT_STATUS_LABELS[event.status]}</Badge>
+                  </li>
+                ))}
+              {standaloneReservations
+                .filter((r) => r.status !== "cancelada")
+                .sort((a, b) => a.inicio.localeCompare(b.inicio))
+                .map((r) => (
+                  <li key={r.id} className="px-5 py-3 flex items-center justify-between gap-4 flex-wrap">
+                    <div>
+                      <Link href={`/reservas/${r.id}`} className="text-sm font-medium text-[var(--foreground)] hover:text-brand-700">
+                        {spaceById.get(r.spaceId)?.nome ?? "Espaço"} — {r.motivo}
+                      </Link>
+                      <p className="text-xs text-fg-muted">{formatDate(r.inicio)} {formatTime(r.inicio)}</p>
+                    </div>
+                    <Badge tone="neutral">Reserva sem evento</Badge>
                   </li>
                 ))}
             </ul>
@@ -196,6 +278,19 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       )}
     </div>
   );
+}
+
+function chipClass(status: EventStatus): string {
+  const map: Record<EventStatus, string> = {
+    rascunho: "bg-surface-muted text-fg-muted",
+    planejamento: "bg-info-50 text-info-700",
+    aguardando_aprovacao: "bg-warning-50 text-warning-700",
+    confirmado: "bg-brand-50 text-brand-700",
+    em_execucao: "bg-success-50 text-success-700",
+    concluido: "bg-surface-muted text-fg-muted",
+    cancelado: "bg-danger-50 text-danger-700",
+  };
+  return map[status];
 }
 
 function toDateParam(d: Date): string {

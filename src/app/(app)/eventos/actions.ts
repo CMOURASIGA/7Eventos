@@ -33,36 +33,6 @@ function readEventFields(formData: FormData) {
   };
 }
 
-export async function createEvent(formData: FormData): Promise<void> {
-  const session = await requireAuthSession();
-  const repository = getRepository();
-  const fields = readEventFields(formData);
-
-  const inicio = String(formData.get("sessaoInicio") ?? "");
-  const fim = String(formData.get("sessaoFim") ?? "");
-
-  if (!fields.titulo || !fields.categoria || !fields.demandante || !inicio || !fim) {
-    redirect(`/eventos/novo?error=${encodeURIComponent("Preencha título, categoria, demandante e a sessão inicial.")}`);
-  }
-  if (new Date(fim).getTime() <= new Date(inicio).getTime()) {
-    redirect(`/eventos/novo?error=${encodeURIComponent("A data/hora final deve ser posterior à inicial (RN12).")}`);
-  }
-
-  try {
-    const event = await repository.events.create(
-      session,
-      { ...fields, responsavelId: fields.responsavelId || session.userId },
-      [{ inicio: new Date(inicio).toISOString(), fim: new Date(fim).toISOString() }],
-    );
-    revalidatePath("/eventos");
-    revalidatePath("/dashboard");
-    redirect(`/eventos/${event.id}`);
-  } catch (err) {
-    if (isRedirectError(err)) throw err;
-    redirect(`/eventos/novo?error=${encodeURIComponent(errorMessage(err))}`);
-  }
-}
-
 export async function updateEvent(id: string, formData: FormData): Promise<void> {
   const session = await requireAuthSession();
   const repository = getRepository();
@@ -115,7 +85,7 @@ export async function addEventSession(eventId: string, formData: FormData): Prom
     redirect(`/eventos/${eventId}?error=${encodeURIComponent("Informe início e fim da sessão.")}`);
   }
   if (new Date(fim).getTime() <= new Date(inicio).getTime()) {
-    redirect(`/eventos/${eventId}?error=${encodeURIComponent("A data/hora final deve ser posterior à inicial (RN12).")}`);
+    redirect(`/eventos/${eventId}?error=${encodeURIComponent("A data/hora final deve ser posterior à data/hora inicial.")}`);
   }
 
   const current = await repository.events.getSessions(session, eventId);

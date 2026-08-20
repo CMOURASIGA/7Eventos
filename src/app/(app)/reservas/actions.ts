@@ -50,7 +50,26 @@ export async function updateReservationStatus(id: string, status: "confirmada" |
   const repository = getRepository();
   await repository.reservations.updateStatus(session, id, status);
   revalidatePath("/reservas");
+  revalidatePath(`/reservas/${id}`);
   revalidatePath("/dashboard");
+}
+
+export async function linkReservationToEvent(id: string, formData: FormData): Promise<void> {
+  const session = await requireAuthSession();
+  const repository = getRepository();
+  const eventId = String(formData.get("eventId") ?? "");
+  if (!eventId) {
+    redirect(`/reservas/${id}?error=${encodeURIComponent("Selecione um evento para vincular.")}`);
+  }
+  try {
+    await repository.reservations.linkToEvent(session, id, eventId);
+    revalidatePath(`/reservas/${id}`);
+    revalidatePath(`/eventos/${eventId}`);
+    redirect(`/reservas/${id}?linked=1`);
+  } catch (err) {
+    if (isRedirectError(err)) throw err;
+    redirect(`/reservas/${id}?error=${encodeURIComponent(errorMessage(err))}`);
+  }
 }
 
 function errorMessage(err: unknown): string {

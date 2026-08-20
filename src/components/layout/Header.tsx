@@ -3,6 +3,7 @@ import { ROLE_LABELS } from "@/lib/domain/types";
 import { logout } from "@/lib/auth/actions";
 import { getDataMode } from "@/lib/data";
 import { Button } from "@/components/ui/Button";
+import { ICONS } from "./icons";
 import { DemoResetButton } from "./DemoResetButton";
 
 export function Header({ user, company }: { user: User; company: Company | null }) {
@@ -10,7 +11,7 @@ export function Header({ user, company }: { user: User; company: Company | null 
 
   return (
     <header className="h-16 shrink-0 border-b border-border-subtle bg-surface flex items-center justify-between px-4 md:px-6 gap-4">
-      <div className="min-w-0">
+      <div className="min-w-0 shrink-0">
         <p className="text-sm font-semibold text-[var(--foreground)] truncate">
           {company?.nomeFantasia ?? "Consult Services"}
         </p>
@@ -21,7 +22,20 @@ export function Header({ user, company }: { user: User; company: Company | null 
         )}
       </div>
 
-      <div className="flex items-center gap-3">
+      <form action="/buscar" className="hidden md:flex flex-1 max-w-sm">
+        <label className="relative w-full">
+          <span className="sr-only">Buscar eventos, espaços, reservas ou usuários</span>
+          <ICONS.search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-muted" />
+          <input
+            type="search"
+            name="q"
+            placeholder="Buscar em todo o sistema..."
+            className="w-full rounded-[var(--radius-sm)] border border-border bg-white pl-8 pr-3 py-1.5 text-sm placeholder:text-fg-muted focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
+          />
+        </label>
+      </form>
+
+      <div className="flex items-center gap-3 shrink-0">
         {isDemo && <DemoResetButton />}
 
         <div className="hidden sm:flex items-center gap-2 pl-3 border-l border-border-subtle">

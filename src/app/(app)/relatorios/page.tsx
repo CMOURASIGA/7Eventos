@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireAuthSession } from "@/lib/auth/session";
 import { getRepository } from "@/lib/data";
 import { EVENT_STATUS_LABELS } from "@/lib/domain/types";
@@ -147,7 +148,11 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
                 <tbody>
                   {filtered.map((event, idx) => (
                     <tr key={event.id} className="border-b border-border-subtle last:border-0">
-                      <td className="px-5 py-2 font-medium text-[var(--foreground)]">{event.titulo}</td>
+                      <td className="px-5 py-2 font-medium">
+                        <Link href={`/eventos/${event.id}`} className="text-[var(--foreground)] hover:text-brand-700 hover:underline">
+                          {event.titulo}
+                        </Link>
+                      </td>
                       <td className="px-5 py-2 text-fg-muted">{event.demandante}</td>
                       <td className="px-5 py-2 text-fg-muted">{event.categoria}</td>
                       <td className="px-5 py-2 text-fg-muted">{EVENT_STATUS_LABELS[event.status]}</td>

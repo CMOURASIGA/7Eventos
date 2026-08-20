@@ -87,10 +87,11 @@ export default async function UsersAdminPage({
                     title={user.status === "ativo" ? "Inativar usuário" : "Reativar usuário"}
                     description={
                       user.status === "ativo"
-                        ? "O usuário perderá acesso ao sistema imediatamente."
-                        : "O usuário poderá acessar o sistema novamente."
+                        ? `${user.nome} perderá acesso ao sistema imediatamente.`
+                        : `${user.nome} poderá acessar o sistema novamente.`
                     }
                     confirmLabel={user.status === "ativo" ? "Inativar" : "Reativar"}
+                    aria-label={`${user.status === "ativo" ? "Inativar" : "Reativar"} usuário ${user.nome}`}
                     onConfirm={setUserStatus.bind(null, user.id, user.status === "ativo" ? "inativo" : "ativo")}
                   >
                     {user.status === "ativo" ? "Inativar" : "Reativar"}

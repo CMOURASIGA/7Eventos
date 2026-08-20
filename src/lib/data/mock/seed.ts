@@ -13,7 +13,7 @@ import type {
   User,
 } from "@/lib/domain/types";
 import { calculateComplexity } from "@/lib/domain/complexity";
-import { CATEGORIAS, TEMATICAS, DEMANDANTES } from "@/lib/domain/catalog";
+import { DEMANDANTES } from "@/lib/domain/catalog";
 
 /**
  * Gerador de base de demonstração rica para o 7Eventos.
@@ -283,28 +283,55 @@ export function generateSeed(): SeedData {
   const spacesByCompany = (companyId: string) =>
     spaces.filter((s) => s.companyId === companyId);
 
-  const eventTitles = [
-    "Convenção Anual de Parceiros",
-    "Workshop de Liderança Consultiva",
-    "Lançamento da Plataforma Digital",
-    "Encontro de Integração de Novos Colaboradores",
-    "Fórum de Sustentabilidade Corporativa",
-    "Treinamento de Vendas Consultivas",
-    "Cerimônia de Premiação Anual",
-    "Summit de Inovação e Tecnologia",
-    "Reunião Estratégica de Diretoria",
-    "Festa de Confraternização de Fim de Ano",
-    "Roadshow Regional Sul",
-    "Painel de Diversidade e Inclusão",
-    "Capacitação em Compliance",
-    "Evento de Relacionamento com Clientes VIP",
-    "Hackathon Interno de Inovação",
-    "Assembleia Geral de Acionistas",
-    "Feira de Carreiras",
-    "Congresso Setorial 2026",
-    "Show de Encerramento de Temporada",
-    "Coletiva de Imprensa - Novo Produto",
-];
+  // Cada evento tem título, categoria e temática coerentes entre si (evita
+  // combinações estranhas como "Show de Encerramento" categorizado como
+  // "Treinamento"). O pool tem exatamente o total de eventos gerados
+  // (18 + 12 = 30) e é consumido sem reposição, então nenhum título se
+  // repete entre as duas empresas de demonstração.
+  interface EventTemplate {
+    titulo: string;
+    categoria: string;
+    tematica: string;
+  }
+  const EVENT_TEMPLATES: EventTemplate[] = [
+    { titulo: "Convenção Anual de Parceiros", categoria: "Convenção", tematica: "Vendas" },
+    { titulo: "Workshop de Liderança Consultiva", categoria: "Treinamento", tematica: "Liderança" },
+    { titulo: "Lançamento da Plataforma Digital", categoria: "Lançamento de produto", tematica: "Tecnologia" },
+    { titulo: "Encontro de Integração de Novos Colaboradores", categoria: "Institucional", tematica: "Integração" },
+    { titulo: "Fórum de Sustentabilidade Corporativa", categoria: "Institucional", tematica: "Sustentabilidade" },
+    { titulo: "Treinamento de Vendas Consultivas", categoria: "Treinamento", tematica: "Vendas" },
+    { titulo: "Cerimônia de Premiação Anual", categoria: "Cerimônia", tematica: "Liderança" },
+    { titulo: "Summit de Inovação e Tecnologia", categoria: "Convenção", tematica: "Inovação" },
+    { titulo: "Reunião Estratégica de Diretoria", categoria: "Institucional", tematica: "Liderança" },
+    { titulo: "Festa de Confraternização de Fim de Ano", categoria: "Confraternização", tematica: "Aniversário da empresa" },
+    { titulo: "Roadshow Regional Sul", categoria: "Comercial", tematica: "Vendas" },
+    { titulo: "Painel de Diversidade e Inclusão", categoria: "Institucional", tematica: "Diversidade e inclusão" },
+    { titulo: "Capacitação em Compliance", categoria: "Treinamento", tematica: "Liderança" },
+    { titulo: "Evento de Relacionamento com Clientes VIP", categoria: "Comercial", tematica: "Vendas" },
+    { titulo: "Hackathon Interno de Inovação", categoria: "Institucional", tematica: "Inovação" },
+    { titulo: "Assembleia Geral de Acionistas", categoria: "Institucional", tematica: "Liderança" },
+    { titulo: "Feira de Carreiras", categoria: "Institucional", tematica: "Integração" },
+    { titulo: "Congresso Setorial", categoria: "Convenção", tematica: "Inovação" },
+    { titulo: "Show de Encerramento de Temporada", categoria: "Cultural", tematica: "Aniversário da empresa" },
+    { titulo: "Coletiva de Imprensa - Novo Produto", categoria: "Lançamento de produto", tematica: "Tecnologia" },
+    { titulo: "Café com o Presidente", categoria: "Institucional", tematica: "Liderança" },
+    { titulo: "Semana de Inovação Aberta", categoria: "Cultural", tematica: "Inovação" },
+    { titulo: "Rodada de Negócios com Fornecedores", categoria: "Comercial", tematica: "Vendas" },
+    { titulo: "Onboarding de Novos Gestores", categoria: "Treinamento", tematica: "Liderança" },
+    { titulo: "Circuito de Bem-Estar Corporativo", categoria: "Institucional", tematica: "Diversidade e inclusão" },
+    { titulo: "Lançamento do Relatório de Sustentabilidade", categoria: "Institucional", tematica: "Sustentabilidade" },
+    { titulo: "Encontro Nacional de Franqueados", categoria: "Convenção", tematica: "Vendas" },
+    { titulo: "Maratona de Tecnologia e Dados", categoria: "Treinamento", tematica: "Tecnologia" },
+    { titulo: "Cerimônia de Formatura do Programa Trainee", categoria: "Cerimônia", tematica: "Integração" },
+    { titulo: "Retiro de Planejamento Estratégico", categoria: "Institucional", tematica: "Liderança" },
+  ];
+  // Fisher-Yates com o RNG determinístico da seed, para consumir o pool
+  // em ordem embaralhada mas reprodutível.
+  const templateQueue = [...EVENT_TEMPLATES];
+  for (let i = templateQueue.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [templateQueue[i], templateQueue[j]] = [templateQueue[j], templateQueue[i]];
+  }
 
 const STATUS_CYCLE: EventStatus[] = [
   "rascunho",
@@ -352,10 +379,9 @@ const STATUS_CYCLE: EventStatus[] = [
       const multiSessao = rng() < 0.25;
       const estrategico = rng() < 0.3;
       const previstoOrcamento = rng() < 0.75;
-      const categoria = pick(CATEGORIAS);
-      const tematica = pick(TEMATICAS);
+      const template = templateQueue.pop()!;
+      const { titulo, categoria, tematica } = template;
       const demandante = pick(DEMANDANTES);
-      const titulo = `${pick(eventTitles)} ${new Date(inicio).getFullYear()}`;
 
       const eventId = uid("event", seq.event++);
       const event: EventEntity = {
@@ -386,7 +412,10 @@ const STATUS_CYCLE: EventStatus[] = [
         createdBy: responsavel,
         createdAt: isoAt(dayOffset - intBetween(20, 90), 10),
         updatedBy: pick([responsavel, cfg.admin]),
-        updatedAt: isoAt(dayOffset - intBetween(1, 15), 14),
+        // A última atualização nunca é anterior à criação nem posterior a
+        // hoje: eventos passados foram atualizados por último logo após
+        // acontecerem; eventos futuros, pouco antes da data prevista.
+        updatedAt: isoAt(isPast ? Math.min(dayOffset + intBetween(0, 3), 0) : dayOffset - intBetween(1, 10), 14),
       };
       events.push(event);
 

@@ -9,16 +9,20 @@ export function EventForm({
   event,
   spaces,
   users,
+  currentUserId,
   submitLabel,
-  includeSessionFields,
 }: {
   action: (formData: FormData) => void;
   event?: EventEntity;
   spaces: Space[];
   users: User[];
+  /** Usado para não repetir a mesma pessoa como "Eu mesmo" e pelo nome na lista de responsáveis. */
+  currentUserId: string;
   submitLabel: string;
-  includeSessionFields?: boolean;
 }) {
+  const currentUser = users.find((u) => u.id === currentUserId);
+  const otherUsers = users.filter((u) => u.id !== currentUserId);
+
   return (
     <form action={action} className="space-y-6">
       <Card>
@@ -61,9 +65,13 @@ export function EventForm({
             </Select>
           </Field>
           <Field label="Responsável" htmlFor="responsavelId">
-            <Select id="responsavelId" name="responsavelId" defaultValue={event?.responsavelId ?? ""}>
-              <option value="">Eu mesmo</option>
-              {users.map((u) => (
+            <Select
+              id="responsavelId"
+              name="responsavelId"
+              defaultValue={event && event.responsavelId !== currentUserId ? event.responsavelId : ""}
+            >
+              <option value="">Eu mesmo{currentUser ? ` (${currentUser.nome})` : ""}</option>
+              {otherUsers.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.nome}
                 </option>
@@ -76,17 +84,6 @@ export function EventForm({
           <Field label="Contato do demandante" htmlFor="contatoDemandante">
             <Input id="contatoDemandante" name="contatoDemandante" defaultValue={event?.contatoDemandante} />
           </Field>
-
-          {includeSessionFields && (
-            <>
-              <Field label="Início da sessão" htmlFor="sessaoInicio" required>
-                <Input id="sessaoInicio" name="sessaoInicio" type="datetime-local" required />
-              </Field>
-              <Field label="Fim da sessão" htmlFor="sessaoFim" required>
-                <Input id="sessaoFim" name="sessaoFim" type="datetime-local" required />
-              </Field>
-            </>
-          )}
 
           <Field label="Frequência" htmlFor="frequencia">
             <Select id="frequencia" name="frequencia" defaultValue={event?.frequencia ?? "unico"}>

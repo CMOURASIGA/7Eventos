@@ -2,6 +2,7 @@ import { requireAuthSession } from "@/lib/auth/session";
 import { getRepository } from "@/lib/data";
 import { Card, CardHeader, Field, Input, Select, Textarea, Banner } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/layout/Breadcrumb";
 import { createReservation } from "../actions";
 
 export default async function NewReservationPage({
@@ -16,13 +17,12 @@ export default async function NewReservationPage({
 
   return (
     <div className="max-w-2xl space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold text-[var(--foreground)]">Reserva rápida</h1>
-        <p className="text-sm text-fg-muted">
-          Fluxo independente do cadastro completo de evento (RN07). Depois pode ser vinculada a um
-          evento sem redigitar dados.
-        </p>
-      </div>
+      <PageHeader
+        breadcrumb={[{ label: "Reservas", href: "/reservas/buscar" }, { label: "Reserva rápida" }]}
+        backHref={eventId ? `/eventos/${eventId}` : "/reservas/buscar"}
+        title="Reserva rápida"
+        description="Reserve um espaço sem precisar preencher o cadastro completo de um evento. Se quiser, você pode vincular esta reserva a um evento depois, sem digitar os dados de novo."
+      />
 
       {error && <Banner tone="danger">{error}</Banner>}
 

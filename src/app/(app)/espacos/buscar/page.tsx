@@ -3,6 +3,7 @@ import { requireAuthSession } from "@/lib/auth/session";
 import { getRepository } from "@/lib/data";
 import { Card, CardHeader, Field, Input, Select, Badge, EmptyState } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/layout/Breadcrumb";
 
 interface SearchParams {
   nome?: string;
@@ -33,10 +34,12 @@ export default async function SearchSpacesPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-[var(--foreground)]">Buscar espaços</h1>
-        <p className="text-sm text-fg-muted">Filtre por nome, local, status e capacidade mínima.</p>
-      </div>
+      <PageHeader
+        breadcrumb={[{ label: "Espaços", href: "/espacos" }, { label: "Buscar" }]}
+        backHref="/espacos"
+        title="Buscar espaços"
+        description="Filtre por nome, local, status e capacidade mínima."
+      />
 
       <Card>
         <form className="p-5 grid sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">

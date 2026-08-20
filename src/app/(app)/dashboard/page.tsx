@@ -20,7 +20,29 @@ export default async function DashboardPage({
   const defaultTo = new Date(now.getFullYear(), now.getMonth() + 4, 0).toISOString();
   const period = { from: params.from ?? defaultFrom, to: params.to ?? defaultTo };
 
-  const data = await repository.dashboard.get(session, period);
+  const periodLengthMs = new Date(period.to).getTime() - new Date(period.from).getTime();
+  const previousPeriod = {
+    from: new Date(new Date(period.from).getTime() - periodLengthMs).toISOString(),
+    to: new Date(new Date(period.from).getTime() - 1).toISOString(),
+  };
+
+  const [data, previousData] = await Promise.all([
+    repository.dashboard.get(session, period),
+    repository.dashboard.get(session, previousPeriod),
+  ]);
+
+  const eventsChangePct =
+    previousData.totalEventos > 0
+      ? Math.round(((data.totalEventos - previousData.totalEventos) / previousData.totalEventos) * 100)
+      : null;
+
+  const concludedPct =
+    data.totalEventos > 0 ? Math.round(((data.eventosPorStatus["concluido"] ?? 0) / data.totalEventos) * 100) : null;
+
+  const avgOccupancy =
+    data.ocupacaoEspacos.length > 0
+      ? Math.round(data.ocupacaoEspacos.reduce((sum, s) => sum + s.percentual, 0) / data.ocupacaoEspacos.length)
+      : null;
 
   return (
     <div className="space-y-6">
@@ -58,7 +80,13 @@ export default async function DashboardPage({
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
-        <KPICard label="Total de eventos" value={data.totalEventos} href="/eventos/buscar" />
+        <KPICard
+          label="Total de eventos"
+          value={data.totalEventos}
+          href="/eventos/buscar"
+          hint={eventsChangePct == null ? undefined : `${eventsChangePct >= 0 ? "+" : ""}${eventsChangePct}% vs período anterior`}
+          tone={eventsChangePct == null ? "neutral" : eventsChangePct >= 0 ? "success" : "warning"}
+        />
         <KPICard
           label="Eventos estratégicos"
           value={data.eventosEstrategicos}
@@ -77,6 +105,8 @@ export default async function DashboardPage({
           href="/agenda"
           tone="info"
         />
+        {concludedPct != null && <KPICard label="Concluídos no período" value={`${concludedPct}%`} tone="success" />}
+        {avgOccupancy != null && <KPICard label="Ocupação média dos espaços" value={`${avgOccupancy}%`} tone="info" />}
       </div>
 
       <div className="grid lg:grid-cols-2 gap-4">
