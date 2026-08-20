@@ -26,7 +26,7 @@ import { DEMANDANTES } from "@/lib/domain/catalog";
  * NUNCA deve ser usado quando DATA_MODE=supabase.
  */
 
-// RNG determinístico (mulberry32) para reprodutibilidade entre reinicios.
+// RNG determinístico (mulberry32) para reprodutibilidade entre reinícios.
 function createRng(seed: number) {
   let a = seed;
   return function rng() {
