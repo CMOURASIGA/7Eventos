@@ -76,6 +76,10 @@ export default async function EventDetailPage({
   const canComplexity = can(session.perfil, "assess_complexity");
   const canCancel = can(session.perfil, "cancel_delete_event");
   const canManageReservations = can(session.perfil, "manage_reservations");
+  // Operador (só "create_event"): pode continuar o próprio rascunho pelo
+  // assistente, mas não tem "Editar"/"Avançar status" (exclusivos do Gestor/Admin).
+  const canContinueOwnDraft =
+    !canEdit && can(session.perfil, "create_event") && event.createdBy === session.userId && event.status === "rascunho";
 
   const doneCount = checklist.filter((c) => c.status === "concluido").length;
   const checklistPct = checklist.length > 0 ? Math.round((doneCount / checklist.length) * 100) : 0;
@@ -106,6 +110,11 @@ export default async function EventDetailPage({
                 Editar
               </ButtonLink>
             )}
+            {canContinueOwnDraft && (
+              <ButtonLink href={`/eventos/${id}/novo?step=1`} variant="secondary" size="sm">
+                Continuar cadastro
+              </ButtonLink>
+            )}
             {canEdit && nextStatus && (
               <form action={changeEventStatus.bind(null, id, nextStatus)}>
                 <Button type="submit" size="sm">
@@ -131,7 +140,12 @@ export default async function EventDetailPage({
 
       {error && <Banner tone="danger">{error}</Banner>}
       {updated === "1" && <Banner tone="success">Evento atualizado com sucesso.</Banner>}
-      {created === "1" && <Banner tone="success">Evento criado com sucesso.</Banner>}
+      {created === "1" && event.status === "rascunho" && (
+        <Banner tone="success">
+          Evento salvo em rascunho. Um gestor precisa revisar e avançar o status para seguir com o planejamento.
+        </Banner>
+      )}
+      {created === "1" && event.status !== "rascunho" && <Banner tone="success">Evento criado com sucesso.</Banner>}
       {reservationCreated === "1" && <Banner tone="success">Reserva criada e vinculada a este evento.</Banner>}
 
       <Card className="overflow-hidden">

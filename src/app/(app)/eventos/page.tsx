@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireAuthSession } from "@/lib/auth/session";
 import { getRepository } from "@/lib/data";
-import { can } from "@/lib/domain/permissions";
+import { can, canCreateEvent } from "@/lib/domain/permissions";
 import { EVENT_STATUS_LABELS } from "@/lib/domain/types";
 import { Card, CardHeader, Badge, EmptyState, Banner } from "@/components/ui/primitives";
 import { ButtonLink } from "@/components/ui/Button";
@@ -16,7 +16,7 @@ export default async function EventosHubPage({
   const session = await requireAuthSession();
   const repository = getRepository();
   const { negado } = await searchParams;
-  const canCreate = can(session.perfil, "create_edit_event");
+  const canCreate = canCreateEvent(session.perfil);
   const canManageReservations = can(session.perfil, "manage_reservations");
   const recent = await repository.events.search(session, {});
 

@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { requireAuthSession } from "@/lib/auth/session";
 import { getRepository } from "@/lib/data";
-import { can } from "@/lib/domain/permissions";
+import { can, canCreateEvent } from "@/lib/domain/permissions";
 import { CATEGORIAS, TEMATICAS } from "@/lib/domain/catalog";
 import { EVENT_STATUS_LABELS } from "@/lib/domain/types";
 import { Card, CardHeader, Field, Input, Select, Textarea, Banner, Badge } from "@/components/ui/primitives";
@@ -18,7 +18,8 @@ export default async function EditWizardStepPage({
   searchParams: Promise<{ step?: string; error?: string }>;
 }) {
   const session = await requireAuthSession();
-  if (!can(session.perfil, "create_edit_event")) redirect("/eventos?negado=1");
+  if (!canCreateEvent(session.perfil)) redirect("/eventos?negado=1");
+  const canEditAnyEvent = can(session.perfil, "create_edit_event");
 
   const repository = getRepository();
   const { id } = await params;
@@ -31,6 +32,11 @@ export default async function EditWizardStepPage({
     repository.users.list(session),
   ]);
   if (!event) notFound();
+  // Quem só tem "create_event" (Operador) só pode continuar pelo assistente
+  // o próprio rascunho ainda não publicado.
+  if (!canEditAnyEvent && (event.createdBy !== session.userId || event.status !== "rascunho")) {
+    redirect("/eventos?negado=1");
+  }
 
   // Evita "Eu mesmo" e o próprio nome aparecerem como duas opções distintas.
   const otherUsers = users.filter((u) => u.id !== session.userId);
@@ -218,7 +224,14 @@ export default async function EditWizardStepPage({
 
       {step === 5 && (
         <Card>
-          <CardHeader title="Revisão" description="Confira os dados antes de concluir o cadastro." />
+          <CardHeader
+            title="Revisão"
+            description={
+              canEditAnyEvent
+                ? "Confira os dados antes de concluir o cadastro."
+                : "Confira os dados antes de enviar para revisão. Um gestor precisa aprovar para o evento avançar de status."
+            }
+          />
           <div className="p-5 space-y-4 text-sm">
             <SummaryRow label="Título" value={event.titulo} />
             <SummaryRow label="Categoria / Temática" value={`${event.categoria}${event.tematica ? ` · ${event.tematica}` : ""}`} />
@@ -231,7 +244,7 @@ export default async function EditWizardStepPage({
               Salvar como rascunho e sair
             </ButtonLink>
             <form action={wizardFinish.bind(null, id)}>
-              <Button type="submit">Concluir cadastro</Button>
+              <Button type="submit">{canEditAnyEvent ? "Concluir cadastro" : "Enviar para revisão do gestor"}</Button>
             </form>
           </div>
         </Card>

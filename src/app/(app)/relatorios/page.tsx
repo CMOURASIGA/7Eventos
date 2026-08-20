@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireAuthSession } from "@/lib/auth/session";
 import { getRepository } from "@/lib/data";
+import { can } from "@/lib/domain/permissions";
 import { EVENT_STATUS_LABELS } from "@/lib/domain/types";
 import { COMPLEXITY_LEVEL_LABELS } from "@/lib/domain/complexity";
 import { CATEGORIAS } from "@/lib/domain/catalog";
@@ -28,6 +29,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const repository = getRepository();
   const params = await searchParams;
   const searched = params.q === "1";
+  const canViewFinancials = can(session.perfil, "view_financials");
 
   const spaces = await repository.spaces.list(session);
 
@@ -46,20 +48,25 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const preFiltered = searched
     ? results.filter((e) => {
         if (params.categoria && e.categoria !== params.categoria) return false;
-        if (params.orcamento === "com" && !e.previstoOrcamento) return false;
-        if (params.orcamento === "sem" && e.previstoOrcamento) return false;
+        if (canViewFinancials && params.orcamento === "com" && !e.previstoOrcamento) return false;
+        if (canViewFinancials && params.orcamento === "sem" && e.previstoOrcamento) return false;
         return true;
       })
     : [];
 
-  const budgetByEventId = new Map(
-    await Promise.all(
-      preFiltered.map(async (e) => [e.id, await repository.budget.getByEvent(session, e.id)] as const),
-    ),
-  );
+  // Valores financeiros (orçamento previsto) só são buscados e exibidos
+  // para quem tem "view_financials" — Consulta e Operador veem os
+  // relatórios operacionais normalmente, mas sem valores em Reais.
+  const budgetByEventId = canViewFinancials
+    ? new Map(
+        await Promise.all(
+          preFiltered.map(async (e) => [e.id, await repository.budget.getByEvent(session, e.id)] as const),
+        ),
+      )
+    : new Map();
 
-  const valorMin = params.valorMin ? Number(params.valorMin) : undefined;
-  const valorMax = params.valorMax ? Number(params.valorMax) : undefined;
+  const valorMin = canViewFinancials && params.valorMin ? Number(params.valorMin) : undefined;
+  const valorMax = canViewFinancials && params.valorMax ? Number(params.valorMax) : undefined;
   const filtered = preFiltered.filter((e) => {
     if (valorMin === undefined && valorMax === undefined) return true;
     const valor = budgetByEventId.get(e.id)?.valorPrevisto ?? 0;
@@ -121,19 +128,23 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
               ))}
             </Select>
           </Field>
-          <Field label="Orçamento" htmlFor="orcamento">
-            <Select id="orcamento" name="orcamento" defaultValue={params.orcamento ?? ""}>
-              <option value="">Todos</option>
-              <option value="com">Com orçamento previsto</option>
-              <option value="sem">Sem orçamento previsto</option>
-            </Select>
-          </Field>
-          <Field label="Valor mínimo previsto" htmlFor="valorMin">
-            <Input id="valorMin" name="valorMin" type="number" min={0} step="0.01" defaultValue={params.valorMin} />
-          </Field>
-          <Field label="Valor máximo previsto" htmlFor="valorMax">
-            <Input id="valorMax" name="valorMax" type="number" min={0} step="0.01" defaultValue={params.valorMax} />
-          </Field>
+          {canViewFinancials && (
+            <>
+              <Field label="Orçamento" htmlFor="orcamento">
+                <Select id="orcamento" name="orcamento" defaultValue={params.orcamento ?? ""}>
+                  <option value="">Todos</option>
+                  <option value="com">Com orçamento previsto</option>
+                  <option value="sem">Sem orçamento previsto</option>
+                </Select>
+              </Field>
+              <Field label="Valor mínimo previsto" htmlFor="valorMin">
+                <Input id="valorMin" name="valorMin" type="number" min={0} step="0.01" defaultValue={params.valorMin} />
+              </Field>
+              <Field label="Valor máximo previsto" htmlFor="valorMax">
+                <Input id="valorMax" name="valorMax" type="number" min={0} step="0.01" defaultValue={params.valorMax} />
+              </Field>
+            </>
+          )}
           <Field label="Espaço" htmlFor="spaceId">
             <Select id="spaceId" name="spaceId" defaultValue={params.spaceId ?? ""}>
               <option value="">Todos</option>
@@ -168,7 +179,11 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         <Card>
           <CardHeader
             title="Resultado"
-            description={`${filtered.length} evento(s) · orçamento previsto total ${formatCurrency(totalPrevisto)}`}
+            description={
+              canViewFinancials
+                ? `${filtered.length} evento(s) · orçamento previsto total ${formatCurrency(totalPrevisto)}`
+                : `${filtered.length} evento(s)`
+            }
             actions={
               exportHref && (
                 <a href={exportHref} className="text-sm text-brand-700 font-medium hover:underline">
@@ -189,7 +204,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
                     <th className="px-5 py-2">Categoria</th>
                     <th className="px-5 py-2">Status</th>
                     <th className="px-5 py-2">Atualizado</th>
-                    <th className="px-5 py-2">Orçamento previsto</th>
+                    {canViewFinancials && <th className="px-5 py-2">Orçamento previsto</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -204,9 +219,11 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
                       <td className="px-5 py-2 text-fg-muted">{event.categoria}</td>
                       <td className="px-5 py-2 text-fg-muted">{EVENT_STATUS_LABELS[event.status]}</td>
                       <td className="px-5 py-2 text-fg-muted">{formatDate(event.updatedAt)}</td>
-                      <td className="px-5 py-2 text-fg-muted">
-                        {budgets[idx] ? formatCurrency(budgets[idx]!.valorPrevisto) : "—"}
-                      </td>
+                      {canViewFinancials && (
+                        <td className="px-5 py-2 text-fg-muted">
+                          {budgets[idx] ? formatCurrency(budgets[idx]!.valorPrevisto) : "—"}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>

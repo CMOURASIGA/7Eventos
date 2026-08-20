@@ -10,7 +10,7 @@ import type {
   User,
 } from "@/lib/domain/types";
 import { EVENT_STATUS_LABELS, RESERVATION_STATUS_LABELS, ROLE_LABELS } from "@/lib/domain/types";
-import { assertCan } from "@/lib/domain/permissions";
+import { assertCan, assertCanCreateEvent, can, PermissionError } from "@/lib/domain/permissions";
 import { checkAvailability } from "@/lib/domain/availability";
 import { calculateComplexity, COMPLEXITY_LEVEL_LABELS } from "@/lib/domain/complexity";
 import type {
@@ -342,7 +342,7 @@ export const mockRepository: Repository = {
       })).filter((x) => x.event.companyId === companyId);
     },
     async create(session, input, sessions) {
-      assertCan(session.perfil, "create_edit_event");
+      assertCanCreateEvent(session.perfil);
       const store = getStore();
       const companyId = requireCompany(session);
       const event: EventEntity = {
@@ -374,10 +374,17 @@ export const mockRepository: Repository = {
       return event;
     },
     async update(session, id, input) {
-      assertCan(session.perfil, "create_edit_event");
       const store = getStore();
       const event = scoped(session, store.events).find((e) => e.id === id);
       if (!event) throw new Error("Evento não encontrado.");
+      // Quem só tem "create_event" (Operador) só pode continuar editando o
+      // próprio rascunho ainda não publicado — edição plena de qualquer
+      // evento é exclusiva de "create_edit_event" (Gestor/Admin).
+      const canEditOwnDraft =
+        can(session.perfil, "create_event") && event.createdBy === session.userId && event.status === "rascunho";
+      if (!can(session.perfil, "create_edit_event") && !canEditOwnDraft) {
+        throw new PermissionError("create_edit_event");
+      }
       Object.assign(event, input, { updatedBy: session.userId, updatedAt: nowIso() });
       pushAudit(session, { acao: "edicao", entidade: "evento", entidadeId: event.id, descricao: `Evento "${event.titulo}" editado.` });
       return event;
@@ -436,10 +443,14 @@ export const mockRepository: Repository = {
       return store.eventSessions.filter((s) => s.eventId === eventId).sort((a, b) => a.inicio.localeCompare(b.inicio));
     },
     async replaceSessions(session, eventId, sessions) {
-      assertCan(session.perfil, "create_edit_event");
       const store = getStore();
       const event = scoped(session, store.events).find((e) => e.id === eventId);
       if (!event) throw new Error("Evento não encontrado.");
+      const canEditOwnDraft =
+        can(session.perfil, "create_event") && event.createdBy === session.userId && event.status === "rascunho";
+      if (!can(session.perfil, "create_edit_event") && !canEditOwnDraft) {
+        throw new PermissionError("create_edit_event");
+      }
       store.eventSessions = store.eventSessions.filter((s) => s.eventId !== eventId);
       const created = sessions.map((s) => {
         const session_: EventSession = { id: nextId("session"), eventId, ...s };

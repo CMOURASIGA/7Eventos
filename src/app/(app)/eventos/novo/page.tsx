@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { requireAuthSession } from "@/lib/auth/session";
-import { can } from "@/lib/domain/permissions";
+import { canCreateEvent } from "@/lib/domain/permissions";
 import { CATEGORIAS, TEMATICAS } from "@/lib/domain/catalog";
 import { Card, CardHeader, Field, Input, Select, Textarea, Banner } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/Button";
@@ -14,7 +14,7 @@ export default async function NewEventPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const session = await requireAuthSession();
-  if (!can(session.perfil, "create_edit_event")) redirect("/eventos?negado=1");
+  if (!canCreateEvent(session.perfil)) redirect("/eventos?negado=1");
   const { error } = await searchParams;
 
   return (

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireAuthSession } from "@/lib/auth/session";
 import { getRepository } from "@/lib/data";
+import { can } from "@/lib/domain/permissions";
 
 /**
  * Ações do assistente de "Novo evento" em etapas. Cada etapa grava
@@ -153,10 +154,17 @@ export async function wizardStep4(id: string, formData: FormData): Promise<void>
 export async function wizardFinish(id: string): Promise<void> {
   const session = await requireAuthSession();
   const repository = getRepository();
-  await repository.events.updateStatus(session, id, "planejamento");
+
+  // Quem só tem "create_event" (Operador) conclui o cadastro, mas o
+  // evento permanece em rascunho: avançar o status é exclusivo de quem
+  // tem "create_edit_event" (Gestor/Admin), que faz a revisão depois.
+  if (can(session.perfil, "create_edit_event")) {
+    await repository.events.updateStatus(session, id, "planejamento");
+    revalidatePath("/dashboard");
+    revalidatePath("/agenda");
+  }
+
   revalidatePath(`/eventos/${id}`);
   revalidatePath("/eventos");
-  revalidatePath("/dashboard");
-  revalidatePath("/agenda");
   redirect(`/eventos/${id}?created=1`);
 }
