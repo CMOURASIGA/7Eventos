@@ -3,20 +3,26 @@ import { requireAuthSession } from "@/lib/auth/session";
 import { getRepository } from "@/lib/data";
 import { can } from "@/lib/domain/permissions";
 import { EVENT_STATUS_LABELS } from "@/lib/domain/types";
-import { Card, CardHeader, Badge, EmptyState } from "@/components/ui/primitives";
+import { Card, CardHeader, Badge, EmptyState, Banner } from "@/components/ui/primitives";
 import { ButtonLink } from "@/components/ui/Button";
 import { ICONS } from "@/components/layout/icons";
 import { formatDate } from "@/lib/format";
 
-export default async function EventosHubPage() {
+export default async function EventosHubPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ negado?: string }>;
+}) {
   const session = await requireAuthSession();
   const repository = getRepository();
+  const { negado } = await searchParams;
   const canCreate = can(session.perfil, "create_edit_event");
   const canManageReservations = can(session.perfil, "manage_reservations");
   const recent = await repository.events.search(session, {});
 
   return (
     <div className="space-y-6">
+      {negado === "1" && <Banner tone="warning">Você não tem permissão para acessar essa funcionalidade.</Banner>}
       <div className="page-hero flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-semibold text-[var(--foreground)]">Eventos</h1>

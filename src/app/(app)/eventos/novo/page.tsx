@@ -14,7 +14,7 @@ export default async function NewEventPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const session = await requireAuthSession();
-  if (!can(session.perfil, "create_edit_event")) redirect("/eventos");
+  if (!can(session.perfil, "create_edit_event")) redirect("/eventos?negado=1");
   const { error } = await searchParams;
 
   return (
