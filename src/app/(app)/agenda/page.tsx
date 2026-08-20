@@ -99,12 +99,12 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="page-hero flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-semibold text-[var(--foreground)] capitalize">{monthLabel}</h1>
           <p className="text-sm text-fg-muted">Agenda de eventos, sessões e reservas.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <ButtonLink href={monthHref(prevMonth, view)} variant="secondary" size="sm">
             ← Anterior
           </ButtonLink>

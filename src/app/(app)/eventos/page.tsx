@@ -16,7 +16,7 @@ export default async function EventosHubPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="page-hero flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-semibold text-[var(--foreground)]">Eventos</h1>
           <p className="text-sm text-fg-muted">Fonte única de verdade operacional de cada evento.</p>

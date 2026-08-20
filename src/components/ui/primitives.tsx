@@ -127,6 +127,15 @@ export function Field({
   );
 }
 
+const ICON_TONES = {
+  neutral: "bg-surface-muted text-fg-muted",
+  brand: "bg-brand-50 text-brand-700",
+  success: "bg-success-50 text-success-700",
+  warning: "bg-warning-50 text-warning-700",
+  danger: "bg-danger-50 text-danger-700",
+  info: "bg-info-50 text-info-700",
+} as const;
+
 /** KPICard - indicador do dashboard. */
 export function KPICard({
   label,
@@ -134,17 +143,28 @@ export function KPICard({
   hint,
   tone = "neutral",
   href,
+  icon,
 }: {
   label: string;
   value: ReactNode;
   hint?: string;
   tone?: keyof typeof BADGE_TONES;
   href?: string;
+  icon?: ReactNode;
 }) {
   const content = (
     <Card className="p-4 h-full">
-      <p className="text-sm text-fg-muted">{label}</p>
-      <p className="text-2xl font-semibold mt-1 text-[var(--foreground)]">{value}</p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm text-fg-muted">{label}</p>
+          <p className="text-2xl font-semibold mt-1 text-[var(--foreground)]">{value}</p>
+        </div>
+        {icon && (
+          <span className={`shrink-0 h-9 w-9 rounded-full flex items-center justify-center ${ICON_TONES[tone]}`}>
+            {icon}
+          </span>
+        )}
+      </div>
       {hint && (
         <span className={`inline-block mt-2 text-xs px-2 py-0.5 rounded-full border ${BADGE_TONES[tone]}`}>
           {hint}

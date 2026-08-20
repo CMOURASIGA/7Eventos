@@ -3,6 +3,7 @@ import { requireAuthSession } from "@/lib/auth/session";
 import { getRepository } from "@/lib/data";
 import { EVENT_STATUS_LABELS } from "@/lib/domain/types";
 import { COMPLEXITY_LEVEL_LABELS } from "@/lib/domain/complexity";
+import { CATEGORIAS } from "@/lib/domain/catalog";
 import { Card, CardHeader, Field, Input, Select, EmptyState } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/Button";
 import { formatCurrency, formatDate } from "@/lib/format";
@@ -17,6 +18,8 @@ interface SearchParams {
   demandante?: string;
   estrategico?: string;
   orcamento?: string;
+  valorMin?: string;
+  valorMax?: string;
   q?: string;
 }
 
@@ -40,11 +43,32 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
       })
     : [];
 
-  const filtered = searched
-    ? results.filter((e) => !params.categoria || e.categoria === params.categoria)
+  const preFiltered = searched
+    ? results.filter((e) => {
+        if (params.categoria && e.categoria !== params.categoria) return false;
+        if (params.orcamento === "com" && !e.previstoOrcamento) return false;
+        if (params.orcamento === "sem" && e.previstoOrcamento) return false;
+        return true;
+      })
     : [];
 
-  const budgets = await Promise.all(filtered.map((e) => repository.budget.getByEvent(session, e.id)));
+  const budgetByEventId = new Map(
+    await Promise.all(
+      preFiltered.map(async (e) => [e.id, await repository.budget.getByEvent(session, e.id)] as const),
+    ),
+  );
+
+  const valorMin = params.valorMin ? Number(params.valorMin) : undefined;
+  const valorMax = params.valorMax ? Number(params.valorMax) : undefined;
+  const filtered = preFiltered.filter((e) => {
+    if (valorMin === undefined && valorMax === undefined) return true;
+    const valor = budgetByEventId.get(e.id)?.valorPrevisto ?? 0;
+    if (valorMin !== undefined && valor < valorMin) return false;
+    if (valorMax !== undefined && valor > valorMax) return false;
+    return true;
+  });
+
+  const budgets = filtered.map((e) => budgetByEventId.get(e.id) ?? null);
   const totalPrevisto = budgets.reduce((sum, b) => sum + (b?.valorPrevisto ?? 0), 0);
 
   const exportHref = searched
@@ -53,7 +77,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="page-hero">
         <h1 className="text-xl font-semibold text-[var(--foreground)]">Relatórios</h1>
         <p className="text-sm text-fg-muted">Consultas gerenciais por período, status, categoria, complexidade, espaço, demandante, estratégico e orçamento.</p>
       </div>
@@ -86,6 +110,29 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
                 </option>
               ))}
             </Select>
+          </Field>
+          <Field label="Categoria" htmlFor="categoria">
+            <Select id="categoria" name="categoria" defaultValue={params.categoria ?? ""}>
+              <option value="">Todas</option>
+              {CATEGORIAS.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Orçamento" htmlFor="orcamento">
+            <Select id="orcamento" name="orcamento" defaultValue={params.orcamento ?? ""}>
+              <option value="">Todos</option>
+              <option value="com">Com orçamento previsto</option>
+              <option value="sem">Sem orçamento previsto</option>
+            </Select>
+          </Field>
+          <Field label="Valor mínimo previsto" htmlFor="valorMin">
+            <Input id="valorMin" name="valorMin" type="number" min={0} step="0.01" defaultValue={params.valorMin} />
+          </Field>
+          <Field label="Valor máximo previsto" htmlFor="valorMax">
+            <Input id="valorMax" name="valorMax" type="number" min={0} step="0.01" defaultValue={params.valorMax} />
           </Field>
           <Field label="Espaço" htmlFor="spaceId">
             <Select id="spaceId" name="spaceId" defaultValue={params.spaceId ?? ""}>

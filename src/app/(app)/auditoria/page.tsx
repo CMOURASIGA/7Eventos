@@ -38,7 +38,7 @@ export default async function AuditPage({
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="page-hero">
         <h1 className="text-xl font-semibold text-[var(--foreground)]">Auditoria</h1>
         <p className="text-sm text-fg-muted">Trilha de operações relevantes: criação, edição, status, reservas, cancelamentos e alterações administrativas.</p>
       </div>

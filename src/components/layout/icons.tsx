@@ -89,4 +89,28 @@ export const ICONS: Record<string, (props?: SVGProps<SVGSVGElement>) => React.JS
       <path d="m21 21-4.3-4.3" />
     </svg>
   ),
+  star: (p) => (
+    <svg {...common} {...p}>
+      <path d="m12 3 2.6 5.9 6.4.6-4.8 4.3 1.4 6.3L12 17l-5.6 3.1 1.4-6.3-4.8-4.3 6.4-.6z" />
+    </svg>
+  ),
+  wallet: (p) => (
+    <svg {...common} {...p}>
+      <rect x="3" y="6" width="18" height="13" rx="2" />
+      <path d="M3 10h18" />
+      <circle cx="16.5" cy="14" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  ),
+  clock: (p) => (
+    <svg {...common} {...p}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3.5 2" />
+    </svg>
+  ),
+  check: (p) => (
+    <svg {...common} {...p}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="m8.5 12.5 2.3 2.3 4.7-4.8" />
+    </svg>
+  ),
 };

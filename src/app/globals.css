@@ -2,51 +2,62 @@
 
 /*
  * Design tokens - Consult Services 7Eventos
- * Identidade visual alinhada aos demais produtos Consult Services
- * (7Commander, 7Finance): predominância de azul, sem roxo/índigo.
+ * Paleta e escala alinhadas ao design system atual do 7Commander
+ * (styles/tokens.css, branch develop): mesmo azul institucional,
+ * mesma superfície neutra, mesmos raios/sombras — para que 7Commander
+ * e 7Eventos sejam percebidos como produtos da mesma plataforma.
  * docs/7EVENTOS_SPEC.md, seção 15.
  */
 :root {
-  --background: #f4f6fb;
+  --background: #f4f7fa;
   --surface: #ffffff;
-  --surface-muted: #eef2f9;
-  --foreground: #101828;
-  --foreground-muted: #475467;
-  --border: #d0d5dd;
-  --border-subtle: #e4e7ec;
+  --surface-muted: #edf3f8;
+  --foreground: #17324d;
+  --foreground-muted: #536b80;
+  --foreground-tertiary: #8093a5;
+  --border: #dce6ef;
+  --border-subtle: #e7eef4;
+  --border-strong: #8bcdec;
 
-  --brand-50: #eff6ff;
-  --brand-100: #dbeafe;
-  --brand-200: #bfdbfe;
-  --brand-300: #93c5fd;
-  --brand-400: #60a5fa;
-  --brand-500: #2563eb;
-  --brand-600: #1d4ed8;
-  --brand-700: #1e40af;
-  --brand-800: #1e3a8a;
-  --brand-900: #172554;
+  /* Escala azul institucional: 50-400 tons claros (fundos suaves, bordas,
+     foco); 500 é o brand-highlight #00aeef (destaque/foco); 600 é o
+     accent principal #003b73 (botões primários, ações); 700-900
+     aprofundam para texto/hover de alto contraste. */
+  --brand-50: #e1f4fc;
+  --brand-100: #cdecfa;
+  --brand-200: #a8def6;
+  --brand-300: #7cd0f2;
+  --brand-400: #3dbdec;
+  --brand-500: #00aeef;
+  --brand-600: #003b73;
+  --brand-700: #002f5c;
+  --brand-800: #002952;
+  --brand-900: #001a35;
 
-  --success-50: #ecfdf3;
-  --success-500: #12b76a;
-  --success-700: #027a48;
+  --sidebar: #003b73;
+  --sidebar-deep: #002952;
 
-  --warning-50: #fffaeb;
-  --warning-500: #f79009;
-  --warning-700: #b54708;
+  --success-50: #e1f5ee;
+  --success-500: #1d9e75;
+  --success-700: #0f6e56;
 
-  --danger-50: #fef3f2;
-  --danger-500: #f04438;
-  --danger-700: #b42318;
+  --warning-50: #faeeda;
+  --warning-500: #c17f1a;
+  --warning-700: #854f0b;
 
-  --info-50: #eff8ff;
-  --info-500: #2e90fa;
-  --info-700: #175cd3;
+  --danger-50: #fcebeb;
+  --danger-500: #c0453d;
+  --danger-700: #a32d2d;
 
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
-  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
-  --shadow-md: 0 4px 12px rgba(16, 24, 40, 0.08);
+  --info-50: #e1f4fc;
+  --info-500: #00aeef;
+  --info-700: #003b73;
+
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 22px;
+  --shadow-sm: 0 1px 2px rgba(0, 41, 82, 0.06);
+  --shadow-md: 0 16px 32px -24px rgba(0, 59, 115, 0.32);
 }
 
 @theme inline {
@@ -58,6 +69,7 @@
   --color-surface: var(--surface);
   --color-surface-muted: var(--surface-muted);
   --color-fg-muted: var(--foreground-muted);
+  --color-fg-tertiary: var(--foreground-tertiary);
   --color-border: var(--border);
   --color-border-subtle: var(--border-subtle);
 
@@ -90,14 +102,22 @@
   border-color: var(--border-subtle);
 }
 
+html,
 body {
-  background: var(--background);
+  overflow-x: hidden;
+}
+
+body {
+  background:
+    radial-gradient(circle at top right, rgba(0, 174, 239, 0.07) 0%, transparent 24%),
+    linear-gradient(180deg, #fbfdff 0%, var(--background) 28%, #eff5f9 100%);
   color: var(--foreground);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
 
 ::selection {
-  background: var(--brand-200);
+  background: var(--brand-100);
+  color: var(--foreground);
 }
 
 /* Scrollbar discreta, coerente com os demais produtos Consult Services. */
@@ -111,4 +131,199 @@ body {
 ::-webkit-scrollbar-thumb {
   background: var(--border);
   border-radius: 999px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Sidebar — navegação institucional, mesma identidade do 7Commander       */
+/* ---------------------------------------------------------------------- */
+
+.sidebar-shell {
+  background: var(--sidebar);
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 50;
+  width: 280px;
+  max-width: 82vw;
+  transform: translateX(-100%);
+  transition: transform 0.25s ease;
+}
+
+.sidebar-shell.is-open {
+  transform: translateX(0);
+}
+
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(15, 23, 42, 0.45);
+  border: none;
+  padding: 0;
+  animation: sidebarBackdropFade 0.2s ease;
+}
+
+@keyframes sidebarBackdropFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.sidebar-close {
+  color: #edf8ff;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  width: 2rem;
+  height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.sidebar-brand-panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 72px;
+  background: #ffffff;
+  border-bottom: 1px solid var(--border);
+  padding: 12px 16px;
+}
+
+.sidebar-brand-logo-frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border-radius: 10px;
+  background: var(--brand-600);
+  color: #fff;
+  font-weight: 800;
+  font-size: 15px;
+}
+
+.sidebar-product {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+  padding: 14px 16px 15px;
+}
+
+.sidebar-product-name {
+  margin: 0;
+  color: var(--brand-500);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.sidebar-product-subtitle {
+  margin: 6px 0 0;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.sidebar-product-owner {
+  margin: 7px 0 0;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.sidebar-section-label {
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.sidebar-nav-link {
+  color: #edf8ff !important;
+}
+
+.sidebar-nav-link:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff !important;
+}
+
+.sidebar-nav-link-active {
+  background: var(--brand-500);
+  color: #ffffff !important;
+}
+
+.mobile-nav-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--foreground);
+  flex: 0 0 auto;
+}
+
+@media (min-width: 768px) {
+  .sidebar-shell {
+    position: relative;
+    inset: auto;
+    transform: none;
+    max-width: none;
+    width: 76px;
+    min-height: 100vh;
+  }
+  .sidebar-backdrop,
+  .sidebar-close {
+    display: none;
+  }
+  .mobile-nav-toggle {
+    display: none;
+  }
+  .sidebar-rail-only {
+    display: none;
+  }
+  .sidebar-brand-panel {
+    justify-content: center;
+    padding: 12px 0;
+  }
+  .sidebar-product {
+    padding: 10px 0;
+    text-align: center;
+    border-bottom: none;
+  }
+}
+
+@media (min-width: 1024px) {
+  .sidebar-shell {
+    width: 250px;
+  }
+  .sidebar-rail-only {
+    display: revert;
+  }
+  .sidebar-brand-panel {
+    justify-content: flex-start;
+    padding: 12px 16px;
+  }
+  .sidebar-product {
+    text-align: left;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+  }
+}
+
+/* ---------------------------------------------------------------------- */
+/* Hero de página (título + descrição + ações)                            */
+/* ---------------------------------------------------------------------- */
+
+.page-hero {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(233, 246, 253, 0.72) 100%);
+  padding: 1.4rem 1.5rem;
+  box-shadow: var(--shadow-md);
 }

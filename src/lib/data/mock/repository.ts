@@ -9,9 +9,10 @@ import type {
   Space,
   User,
 } from "@/lib/domain/types";
+import { EVENT_STATUS_LABELS, RESERVATION_STATUS_LABELS, ROLE_LABELS } from "@/lib/domain/types";
 import { assertCan } from "@/lib/domain/permissions";
 import { checkAvailability } from "@/lib/domain/availability";
-import { calculateComplexity } from "@/lib/domain/complexity";
+import { calculateComplexity, COMPLEXITY_LEVEL_LABELS } from "@/lib/domain/complexity";
 import type {
   DashboardData,
   DashboardPeriod,
@@ -110,7 +111,7 @@ export const mockRepository: Repository = {
         acao: "administrativo",
         entidade: "usuario",
         entidadeId: user.id,
-        descricao: `Usuário "${user.nome}" criado com perfil ${user.perfil}.`,
+        descricao: `Usuário "${user.nome}" criado com perfil ${ROLE_LABELS[user.perfil]}.`,
       });
       return user;
     },
@@ -181,7 +182,7 @@ export const mockRepository: Repository = {
         acao: status === "inativo" ? "cancelamento" : "edicao",
         entidade: "espaco",
         entidadeId: space.id,
-        descricao: `Espaço "${space.nome}" marcado como ${status}.`,
+        descricao: `Espaço "${space.nome}" marcado como ${status === "inativo" ? "inativo" : "ativo"}.`,
       });
       return space;
     },
@@ -266,7 +267,7 @@ export const mockRepository: Repository = {
         acao: status === "cancelada" ? "cancelamento" : "edicao",
         entidade: "reserva",
         entidadeId: reservation.id,
-        descricao: `Reserva atualizada para status ${status}.`,
+        descricao: `Reserva atualizada para status ${RESERVATION_STATUS_LABELS[status]}.`,
       });
       return reservation;
     },
@@ -403,7 +404,7 @@ export const mockRepository: Repository = {
         acao: "alteracao_status",
         entidade: "evento",
         entidadeId: event.id,
-        descricao: `Status do evento "${event.titulo}" alterado de ${anterior} para ${status}.`,
+        descricao: `Status do evento "${event.titulo}" alterado de ${EVENT_STATUS_LABELS[anterior]} para ${EVENT_STATUS_LABELS[status]}.`,
       });
       return event;
     },
@@ -547,7 +548,7 @@ export const mockRepository: Repository = {
         acao: "edicao",
         entidade: "complexidade",
         entidadeId: assessment.id,
-        descricao: `Complexidade recalculada: ${assessment.nivel} (pontuação ${assessment.pontuacao}).`,
+        descricao: `Complexidade recalculada: ${COMPLEXITY_LEVEL_LABELS[assessment.nivel]} (pontuação ${assessment.pontuacao}).`,
       });
       return assessment;
     },

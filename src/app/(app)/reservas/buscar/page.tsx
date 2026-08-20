@@ -37,7 +37,7 @@ export default async function SearchReservationsPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="page-hero flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-semibold text-[var(--foreground)]">Reservas</h1>
           <p className="text-sm text-fg-muted">Todas as reservas da empresa. Use os filtros para refinar.</p>

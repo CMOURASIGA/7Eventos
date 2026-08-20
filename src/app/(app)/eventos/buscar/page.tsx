@@ -48,7 +48,7 @@ export default async function SearchEventsPage({
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="page-hero">
         <h1 className="text-xl font-semibold text-[var(--foreground)]">Buscar eventos</h1>
         <p className="text-sm text-fg-muted">Filtre por palavra-chave, demandante, período, status, complexidade, local, temática ou eventos estratégicos.</p>
       </div>

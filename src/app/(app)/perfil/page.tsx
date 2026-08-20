@@ -19,7 +19,7 @@ export default async function ProfilePage() {
 
   return (
     <div className="max-w-xl space-y-6">
-      <div>
+      <div className="page-hero">
         <h1 className="text-xl font-semibold text-[var(--foreground)]">Perfil e sessão</h1>
         <p className="text-sm text-fg-muted">Informações da sua conta e da sessão atual.</p>
       </div>
