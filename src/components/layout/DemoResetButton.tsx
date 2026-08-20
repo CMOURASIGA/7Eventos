@@ -1,20 +1,19 @@
 "use client";
 
-import { useTransition } from "react";
 import { resetDemoData } from "@/lib/data/mock/actions";
-import { Button } from "@/components/ui/Button";
+import { ConfirmButton } from "@/components/ui/ConfirmButton";
 
 export function DemoResetButton() {
-  const [pending, startTransition] = useTransition();
   return (
-    <Button
+    <ConfirmButton
       variant="secondary"
       size="sm"
-      disabled={pending}
-      onClick={() => startTransition(() => resetDemoData())}
-      title="Restaura a base de demonstração ao estado inicial"
+      title="Restaurar dados de demonstração?"
+      description="Todos os eventos, reservas, espaços e demais registros voltam ao estado inicial de demonstração. Alterações feitas nesta sessão serão perdidas."
+      confirmLabel="Restaurar dados"
+      onConfirm={() => resetDemoData()}
     >
-      {pending ? "Restaurando..." : "Restaurar dados de demo"}
-    </Button>
+      Restaurar dados de demo
+    </ConfirmButton>
   );
 }

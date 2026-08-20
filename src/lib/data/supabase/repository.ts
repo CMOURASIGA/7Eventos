@@ -5,9 +5,10 @@ import type {
   EventStatus,
   Reservation,
 } from "@/lib/domain/types";
+import { EVENT_STATUS_LABELS, RESERVATION_STATUS_LABELS, ROLE_LABELS } from "@/lib/domain/types";
 import { assertCan } from "@/lib/domain/permissions";
 import { checkAvailability } from "@/lib/domain/availability";
-import { calculateComplexity } from "@/lib/domain/complexity";
+import { calculateComplexity, COMPLEXITY_LEVEL_LABELS } from "@/lib/domain/complexity";
 import type { DashboardData, Repository } from "../repository";
 import { getSupabaseServiceClient } from "./client";
 import {
@@ -131,7 +132,7 @@ export const supabaseRepository: Repository = {
           .single(),
       );
       const user = mapUser(row);
-      await recordAudit(session, { acao: "administrativo", entidade: "usuario", entidadeId: user.id, descricao: `Usuário "${user.nome}" criado com perfil ${user.perfil}.` });
+      await recordAudit(session, { acao: "administrativo", entidade: "usuario", entidadeId: user.id, descricao: `Usuário "${user.nome}" criado com perfil ${ROLE_LABELS[user.perfil]}.` });
       return user;
     },
     async update(session, id, input) {
@@ -229,7 +230,7 @@ export const supabaseRepository: Repository = {
         await db.from("spaces").update({ status }).eq("id", id).eq("company_id", companyId).select("*").single(),
       );
       const space = mapSpace(row);
-      await recordAudit(session, { acao: status === "inativo" ? "cancelamento" : "edicao", entidade: "espaco", entidadeId: space.id, descricao: `Espaço "${space.nome}" marcado como ${status}.` });
+      await recordAudit(session, { acao: status === "inativo" ? "cancelamento" : "edicao", entidade: "espaco", entidadeId: space.id, descricao: `Espaço "${space.nome}" marcado como ${status === "inativo" ? "inativo" : "ativo"}.` });
       return space;
     },
   },
@@ -350,7 +351,7 @@ export const supabaseRepository: Repository = {
         await db.from("reservations").update({ status }).eq("id", id).eq("company_id", companyId).select("*").single(),
       );
       const reservation = mapReservation(row);
-      await recordAudit(session, { acao: status === "cancelada" ? "cancelamento" : "edicao", entidade: "reserva", entidadeId: reservation.id, descricao: `Reserva atualizada para status ${status}.` });
+      await recordAudit(session, { acao: status === "cancelada" ? "cancelamento" : "edicao", entidade: "reserva", entidadeId: reservation.id, descricao: `Reserva atualizada para status ${RESERVATION_STATUS_LABELS[status]}.` });
       return reservation;
     },
     async linkToEvent(session, id, eventId) {
@@ -671,7 +672,7 @@ export const supabaseRepository: Repository = {
           .single(),
       );
       const assessment = mapComplexity(row);
-      await recordAudit(session, { acao: "edicao", entidade: "complexidade", entidadeId: assessment.id, descricao: `Complexidade recalculada: ${assessment.nivel} (pontuação ${assessment.pontuacao}).` });
+      await recordAudit(session, { acao: "edicao", entidade: "complexidade", entidadeId: assessment.id, descricao: `Complexidade recalculada: ${COMPLEXITY_LEVEL_LABELS[assessment.nivel]} (pontuação ${assessment.pontuacao}).` });
       return assessment;
     },
   },
@@ -839,7 +840,7 @@ async function updateEventStatus(
     acao,
     entidade: "evento",
     entidadeId: id,
-    descricao: `Status do evento "${event.titulo}" alterado de ${current.status} para ${status}.`,
+    descricao: `Status do evento "${event.titulo}" alterado de ${EVENT_STATUS_LABELS[current.status as EventStatus]} para ${EVENT_STATUS_LABELS[status]}.`,
   });
   return event;
 }

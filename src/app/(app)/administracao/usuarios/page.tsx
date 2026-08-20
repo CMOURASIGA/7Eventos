@@ -23,7 +23,7 @@ export default async function UsersAdminPage({
 
   return (
     <div className="space-y-6 max-w-4xl">
-      <div>
+      <div className="page-hero">
         <h1 className="text-xl font-semibold text-[var(--foreground)]">Usuários</h1>
         <p className="text-sm text-fg-muted">Administração de usuários e perfis da sua empresa.</p>
       </div>

@@ -67,17 +67,19 @@ export function PageHeader({
   actions?: React.ReactNode;
 }) {
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <Breadcrumb items={breadcrumb} />
         <BackLink href={backHref} label={backLabel} />
       </div>
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-xl font-semibold text-[var(--foreground)]">{title}</h1>
-          {description && <p className="text-sm text-fg-muted mt-0.5">{description}</p>}
+      <div className="page-hero">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-xl font-semibold text-[var(--foreground)]">{title}</h1>
+            {description && <p className="text-sm text-fg-muted mt-1">{description}</p>}
+          </div>
+          {actions && <div className="flex gap-2 flex-wrap">{actions}</div>}
         </div>
-        {actions && <div className="flex gap-2 flex-wrap">{actions}</div>}
       </div>
     </div>
   );

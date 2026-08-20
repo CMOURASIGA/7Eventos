@@ -5,6 +5,7 @@ import { EVENT_STATUS_LABELS } from "@/lib/domain/types";
 import { COMPLEXITY_LEVEL_LABELS } from "@/lib/domain/complexity";
 import { RESERVATION_STATUS_LABELS } from "@/lib/domain/types";
 import { Card, CardHeader, KPICard, Badge, EmptyState } from "@/components/ui/primitives";
+import { ICONS } from "@/components/layout/icons";
 
 export default async function DashboardPage({
   searchParams,
@@ -46,12 +47,12 @@ export default async function DashboardPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="page-hero flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-semibold text-[var(--foreground)]">Dashboard</h1>
           <p className="text-sm text-fg-muted">Visão gerencial dos eventos da sua empresa.</p>
         </div>
-        <form className="flex items-end gap-2 text-sm" action="/dashboard">
+        <form className="flex items-end gap-2 text-sm flex-wrap" action="/dashboard">
           <label className="flex flex-col gap-1">
             <span className="text-xs text-fg-muted">De</span>
             <input
@@ -86,27 +87,35 @@ export default async function DashboardPage({
           href="/eventos/buscar"
           hint={eventsChangePct == null ? undefined : `${eventsChangePct >= 0 ? "+" : ""}${eventsChangePct}% vs período anterior`}
           tone={eventsChangePct == null ? "neutral" : eventsChangePct >= 0 ? "success" : "warning"}
+          icon={<ICONS.events />}
         />
         <KPICard
           label="Eventos estratégicos"
           value={data.eventosEstrategicos}
           tone="brand"
           href="/eventos/buscar?estrategico=true"
+          icon={<ICONS.star />}
         />
         <KPICard
           label="Com orçamento previsto"
           value={data.eventosComOrcamento}
           tone="success"
+          icon={<ICONS.wallet />}
         />
-        <KPICard label="Sem orçamento previsto" value={data.eventosSemOrcamento} tone="warning" />
+        <KPICard label="Sem orçamento previsto" value={data.eventosSemOrcamento} tone="warning" icon={<ICONS.wallet />} />
         <KPICard
           label="Próximos eventos"
           value={data.proximosEventos.length}
           href="/agenda"
           tone="info"
+          icon={<ICONS.clock />}
         />
-        {concludedPct != null && <KPICard label="Concluídos no período" value={`${concludedPct}%`} tone="success" />}
-        {avgOccupancy != null && <KPICard label="Ocupação média dos espaços" value={`${avgOccupancy}%`} tone="info" />}
+        {concludedPct != null && (
+          <KPICard label="Concluídos no período" value={`${concludedPct}%`} tone="success" icon={<ICONS.check />} />
+        )}
+        {avgOccupancy != null && (
+          <KPICard label="Ocupação média dos espaços" value={`${avgOccupancy}%`} tone="info" icon={<ICONS.spaces />} />
+        )}
       </div>
 
       <div className="grid lg:grid-cols-2 gap-4">
