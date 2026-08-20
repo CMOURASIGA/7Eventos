@@ -5,6 +5,7 @@ import { can } from "@/lib/domain/permissions";
 import { Card, CardHeader, Field, Input, Textarea, Badge, Banner } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/Button";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
+import { PageHeader } from "@/components/layout/Breadcrumb";
 import { updateSpace, setSpaceStatus } from "../actions";
 
 export default async function SpaceDetailPage({
@@ -27,33 +28,38 @@ export default async function SpaceDetailPage({
 
   return (
     <div className="max-w-3xl space-y-4">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-semibold text-[var(--foreground)]">{space.nome}</h1>
+      <PageHeader
+        breadcrumb={[{ label: "Espaços", href: "/espacos" }, { label: space.nome }]}
+        backHref="/espacos"
+        title={
+          <span className="flex items-center gap-2">
+            {space.nome}
             <Badge tone={space.status === "ativo" ? "success" : "neutral"}>
               {space.status === "ativo" ? "Ativo" : "Inativo"}
             </Badge>
-          </div>
-          <p className="text-sm text-fg-muted">{space.local}</p>
-        </div>
-        {canManage && (
-          <ConfirmButton
-            variant={space.status === "ativo" ? "danger" : "secondary"}
-            size="sm"
-            title={space.status === "ativo" ? "Inativar espaço" : "Reativar espaço"}
-            description={
-              space.status === "ativo"
-                ? "Espaços inativos não podem receber novas reservas. O histórico é preservado."
-                : "O espaço voltará a aceitar novas reservas."
-            }
-            confirmLabel={space.status === "ativo" ? "Inativar" : "Reativar"}
-            onConfirm={setSpaceStatus.bind(null, id, space.status === "ativo" ? "inativo" : "ativo")}
-          >
-            {space.status === "ativo" ? "Inativar espaço" : "Reativar espaço"}
-          </ConfirmButton>
-        )}
-      </div>
+          </span>
+        }
+        description={space.local}
+        actions={
+          canManage && (
+            <ConfirmButton
+              variant={space.status === "ativo" ? "danger" : "secondary"}
+              size="sm"
+              title={space.status === "ativo" ? "Inativar espaço" : "Reativar espaço"}
+              description={
+                space.status === "ativo"
+                  ? `O espaço "${space.nome}" não poderá mais receber novas reservas. O histórico é preservado e a inativação pode ser desfeita depois.`
+                  : `O espaço "${space.nome}" voltará a aceitar novas reservas.`
+              }
+              confirmLabel={space.status === "ativo" ? "Inativar" : "Reativar"}
+              aria-label={`${space.status === "ativo" ? "Inativar" : "Reativar"} espaço ${space.nome}`}
+              onConfirm={setSpaceStatus.bind(null, id, space.status === "ativo" ? "inativo" : "ativo")}
+            >
+              {space.status === "ativo" ? "Inativar espaço" : "Reativar espaço"}
+            </ConfirmButton>
+          )
+        }
+      />
 
       {error && <Banner tone="danger">{error}</Banner>}
       {updated === "1" && <Banner tone="success">Espaço atualizado com sucesso.</Banner>}

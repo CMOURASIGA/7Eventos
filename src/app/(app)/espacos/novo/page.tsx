@@ -3,6 +3,7 @@ import { can } from "@/lib/domain/permissions";
 import { redirect } from "next/navigation";
 import { Card, CardHeader, Field, Input, Textarea, Banner } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/layout/Breadcrumb";
 import { createSpace } from "../actions";
 
 export default async function NewSpacePage({
@@ -16,10 +17,12 @@ export default async function NewSpacePage({
 
   return (
     <div className="max-w-2xl space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold text-[var(--foreground)]">Novo espaço</h1>
-        <p className="text-sm text-fg-muted">Cadastre um novo espaço disponível para reservas e eventos.</p>
-      </div>
+      <PageHeader
+        breadcrumb={[{ label: "Espaços", href: "/espacos" }, { label: "Novo espaço" }]}
+        backHref="/espacos"
+        title="Novo espaço"
+        description="Cadastre um novo espaço disponível para reservas e eventos."
+      />
 
       {error && <Banner tone="danger">{error}</Banner>}
 
