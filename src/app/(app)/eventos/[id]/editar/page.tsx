@@ -3,6 +3,7 @@ import { requireAuthSession } from "@/lib/auth/session";
 import { getRepository } from "@/lib/data";
 import { can } from "@/lib/domain/permissions";
 import { Banner } from "@/components/ui/primitives";
+import { PageHeader } from "@/components/layout/Breadcrumb";
 import { EventForm } from "../../EventForm";
 import { updateEvent } from "../../actions";
 
@@ -30,16 +31,19 @@ export default async function EditEventPage({
 
   return (
     <div className="max-w-3xl space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold text-[var(--foreground)]">Editar evento</h1>
-        <p className="text-sm text-fg-muted">{event.titulo}</p>
-      </div>
+      <PageHeader
+        breadcrumb={[{ label: "Eventos", href: "/eventos" }, { label: event.titulo, href: `/eventos/${id}` }, { label: "Editar" }]}
+        backHref={`/eventos/${id}`}
+        title="Editar evento"
+        description={event.titulo}
+      />
       {error && <Banner tone="danger">{error}</Banner>}
       <EventForm
         action={updateEvent.bind(null, id)}
         event={event}
         spaces={spaces}
         users={users}
+        currentUserId={session.userId}
         submitLabel="Salvar alterações"
       />
     </div>
