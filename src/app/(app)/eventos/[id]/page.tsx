@@ -75,6 +75,7 @@ export default async function EventDetailPage({
   const canBudget = can(session.perfil, "manage_budget");
   const canComplexity = can(session.perfil, "assess_complexity");
   const canCancel = can(session.perfil, "cancel_delete_event");
+  const canManageReservations = can(session.perfil, "manage_reservations");
 
   const doneCount = checklist.filter((c) => c.status === "concluido").length;
   const checklistPct = checklist.length > 0 ? Math.round((doneCount / checklist.length) * 100) : 0;
@@ -219,11 +220,13 @@ export default async function EventDetailPage({
 
           {activeTab === "reservas" && (
             <div className="space-y-4">
-              <div className="flex justify-end">
-                <Link href={`/reservas/nova?eventId=${id}`} className="text-sm text-brand-700 font-medium hover:underline">
-                  Nova reserva
-                </Link>
-              </div>
+              {canManageReservations && (
+                <div className="flex justify-end">
+                  <Link href={`/reservas/nova?eventId=${id}`} className="text-sm text-brand-700 font-medium hover:underline">
+                    Nova reserva
+                  </Link>
+                </div>
+              )}
               {reservations.length === 0 ? (
                 <EmptyState title="Nenhuma reserva vinculada a este evento." />
               ) : (

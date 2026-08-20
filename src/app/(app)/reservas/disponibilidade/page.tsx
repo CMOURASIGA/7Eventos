@@ -1,5 +1,6 @@
 import { requireAuthSession } from "@/lib/auth/session";
 import { getRepository } from "@/lib/data";
+import { can } from "@/lib/domain/permissions";
 import { Card, CardHeader, Field, Input, Select, Banner } from "@/components/ui/primitives";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { PageHeader } from "@/components/layout/Breadcrumb";
@@ -22,6 +23,7 @@ export default async function AvailabilityPage({
   const params = await searchParams;
   const spaces = await repository.spaces.list(session);
   const checked = params.q === "1" && params.spaceId && params.inicio && params.fim;
+  const canManageReservations = can(session.perfil, "manage_reservations");
 
   const result = checked
     ? await repository.reservations.checkAvailability(session, {
@@ -92,7 +94,7 @@ export default async function AvailabilityPage({
                 ))}
               </div>
             )}
-            {result.available && (
+            {result.available && canManageReservations && (
               <ButtonLink
                 href={`/reservas/nova?spaceId=${params.spaceId}`}
                 size="sm"

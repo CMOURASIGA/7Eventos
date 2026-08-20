@@ -12,6 +12,7 @@ export default async function EventosHubPage() {
   const session = await requireAuthSession();
   const repository = getRepository();
   const canCreate = can(session.perfil, "create_edit_event");
+  const canManageReservations = can(session.perfil, "manage_reservations");
   const recent = await repository.events.search(session, {});
 
   return (
@@ -27,9 +28,11 @@ export default async function EventosHubPage() {
               <ICONS.plus /> Novo evento
             </ButtonLink>
           )}
-          <ButtonLink href="/reservas/nova" variant="secondary" size="sm">
-            Reserva rápida
-          </ButtonLink>
+          {canManageReservations && (
+            <ButtonLink href="/reservas/nova" variant="secondary" size="sm">
+              Reserva rápida
+            </ButtonLink>
+          )}
           <ButtonLink href="/agenda" variant="secondary" size="sm">
             <ICONS.calendar /> Ver agenda
           </ButtonLink>
