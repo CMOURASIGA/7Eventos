@@ -86,7 +86,11 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
     <div className="space-y-6">
       <div className="page-hero">
         <h1 className="text-xl font-semibold text-[var(--foreground)]">Relatórios</h1>
-        <p className="text-sm text-fg-muted">Consultas gerenciais por período, status, categoria, complexidade, espaço, demandante, estratégico e orçamento.</p>
+        <p className="text-sm text-fg-muted">
+          {canViewFinancials
+            ? "Consultas gerenciais por período, status, categoria, complexidade, espaço, demandante, estratégico e orçamento."
+            : "Consultas gerenciais por período, status, categoria, complexidade, espaço, demandante e estratégico."}
+        </p>
       </div>
 
       <Card>

@@ -60,8 +60,9 @@ const MATRIX: Record<Role, Capability[]> = {
   ],
   // Pode criar eventos (sempre nascem em rascunho) e organizar reservas/
   // checklist, mas aprovação, cancelamento, edição de campos já publicados
-  // e valores financeiros seguem exclusivos de Gestor/Admin.
-  operador: ["view_event", "create_event", "manage_checklist", "manage_reservations"],
+  // e valores financeiros seguem exclusivos de Gestor/Admin. Acessa
+  // relatórios operacionais (view_reports), mas não view_financials.
+  operador: ["view_event", "create_event", "manage_checklist", "manage_reservations", "view_reports"],
   consulta: ["view_event", "view_reports"],
 };
 

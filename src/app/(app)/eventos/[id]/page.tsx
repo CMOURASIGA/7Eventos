@@ -46,13 +46,18 @@ export default async function EventDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string; updated?: string; reservationCreated?: string; created?: string; tab?: string }>;
+  searchParams: Promise<{ error?: string; updated?: string; reservationCreated?: string; created?: string; tab?: string; negado?: string }>;
 }) {
   const session = await requireAuthSession();
   const repository = getRepository();
   const { id } = await params;
-  const { error, updated, reservationCreated, created, tab } = await searchParams;
-  const activeTab: TabKey = (TAB_KEYS as readonly string[]).includes(tab ?? "") ? (tab as TabKey) : "visao-geral";
+  const { error, updated, reservationCreated, created, tab, negado } = await searchParams;
+  const canViewFinancials = can(session.perfil, "view_financials");
+  const requestedTab = (TAB_KEYS as readonly string[]).includes(tab ?? "") ? (tab as TabKey) : "visao-geral";
+  // A aba de orçamento expõe valores financeiros — quem não tem
+  // "view_financials" cai de volta para a visão geral, mesmo digitando
+  // ?tab=orcamento diretamente na URL.
+  const activeTab: TabKey = requestedTab === "orcamento" && !canViewFinancials ? "visao-geral" : requestedTab;
 
   const event = await repository.events.get(session, id);
   if (!event) notFound();
@@ -139,6 +144,7 @@ export default async function EventDetailPage({
       />
 
       {error && <Banner tone="danger">{error}</Banner>}
+      {negado === "1" && <Banner tone="warning">Você não tem permissão para acessar essa funcionalidade.</Banner>}
       {updated === "1" && <Banner tone="success">Evento atualizado com sucesso.</Banner>}
       {created === "1" && event.status === "rascunho" && (
         <Banner tone="success">
@@ -157,7 +163,7 @@ export default async function EventDetailPage({
             { key: "sessoes", label: "Sessões", count: sessions.length },
             { key: "reservas", label: "Reservas", count: reservations.length },
             { key: "checklist", label: "Checklist", count: checklist.length },
-            { key: "orcamento", label: "Orçamento" },
+            ...(canViewFinancials ? [{ key: "orcamento", label: "Orçamento" }] : []),
             { key: "complexidade", label: "Complexidade" },
             { key: "historico", label: "Histórico", count: history.length },
           ]}
@@ -331,7 +337,7 @@ export default async function EventDetailPage({
             </div>
           )}
 
-          {activeTab === "orcamento" && (
+          {activeTab === "orcamento" && canViewFinancials && (
             <form action={saveBudget.bind(null, id)} className="max-w-md space-y-3">
               <Field label="Valor previsto (R$)" htmlFor="valorPrevisto">
                 <Input
