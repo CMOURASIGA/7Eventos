@@ -6,6 +6,7 @@ import { COMPLEXITY_LEVEL_LABELS } from "@/lib/domain/complexity";
 import { RESERVATION_STATUS_LABELS } from "@/lib/domain/types";
 import { Card, CardHeader, KPICard, Badge, EmptyState, Banner } from "@/components/ui/primitives";
 import { ICONS } from "@/components/layout/icons";
+import { can } from "@/lib/domain/permissions";
 
 export default async function DashboardPage({
   searchParams,
@@ -15,6 +16,7 @@ export default async function DashboardPage({
   const session = await requireAuthSession();
   const repository = getRepository();
   const params = await searchParams;
+  const canViewFinancials = can(session.perfil, "view_financials");
 
   const now = new Date();
   const defaultFrom = new Date(now.getFullYear(), now.getMonth() - 2, 1).toISOString();
@@ -99,13 +101,17 @@ export default async function DashboardPage({
           href="/eventos/buscar?estrategico=true"
           icon={<ICONS.star />}
         />
-        <KPICard
-          label="Com orçamento previsto"
-          value={data.eventosComOrcamento}
-          tone="success"
-          icon={<ICONS.wallet />}
-        />
-        <KPICard label="Sem orçamento previsto" value={data.eventosSemOrcamento} tone="warning" icon={<ICONS.wallet />} />
+        {canViewFinancials && (
+          <>
+            <KPICard
+              label="Com orçamento previsto"
+              value={data.eventosComOrcamento}
+              tone="success"
+              icon={<ICONS.wallet />}
+            />
+            <KPICard label="Sem orçamento previsto" value={data.eventosSemOrcamento} tone="warning" icon={<ICONS.wallet />} />
+          </>
+        )}
         <KPICard
           label="Próximos eventos"
           value={data.proximosEventos.length}

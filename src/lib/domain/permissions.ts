@@ -17,6 +17,7 @@ export type Capability =
   | "manage_company_settings"
   | "manage_spaces"
   | "create_edit_event"
+  | "create_event"
   | "view_event"
   | "cancel_delete_event"
   | "manage_reservations"
@@ -24,6 +25,7 @@ export type Capability =
   | "manage_budget"
   | "assess_complexity"
   | "view_reports"
+  | "view_financials"
   | "view_audit"
   | "manage_platform"; // superadmin apenas
 
@@ -41,6 +43,7 @@ const MATRIX: Record<Role, Capability[]> = {
     "manage_budget",
     "assess_complexity",
     "view_reports",
+    "view_financials",
     "view_audit",
   ],
   gestor_eventos: [
@@ -53,13 +56,28 @@ const MATRIX: Record<Role, Capability[]> = {
     "manage_budget",
     "assess_complexity",
     "view_reports",
+    "view_financials",
   ],
-  operador: ["view_event", "manage_checklist", "manage_reservations"],
+  // Pode criar eventos (sempre nascem em rascunho) e organizar reservas/
+  // checklist, mas aprovação, cancelamento, edição de campos já publicados
+  // e valores financeiros seguem exclusivos de Gestor/Admin.
+  operador: ["view_event", "create_event", "manage_checklist", "manage_reservations"],
   consulta: ["view_event", "view_reports"],
 };
 
 export function can(role: Role, capability: Capability): boolean {
   return MATRIX[role]?.includes(capability) ?? false;
+}
+
+/** Pode iniciar o cadastro de um evento (assistente em etapas), seja com edição completa ou só criação. */
+export function canCreateEvent(role: Role): boolean {
+  return can(role, "create_edit_event") || can(role, "create_event");
+}
+
+export function assertCanCreateEvent(role: Role): void {
+  if (!canCreateEvent(role)) {
+    throw new PermissionError("create_event");
+  }
 }
 
 /** Lança erro se o perfil não possuir a capacidade exigida. Uso na camada de dados. */

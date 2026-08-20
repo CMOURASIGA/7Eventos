@@ -6,7 +6,7 @@ import type {
   Reservation,
 } from "@/lib/domain/types";
 import { EVENT_STATUS_LABELS, RESERVATION_STATUS_LABELS, ROLE_LABELS } from "@/lib/domain/types";
-import { assertCan } from "@/lib/domain/permissions";
+import { assertCan, assertCanCreateEvent, can, PermissionError } from "@/lib/domain/permissions";
 import { checkAvailability } from "@/lib/domain/availability";
 import { calculateComplexity, COMPLEXITY_LEVEL_LABELS } from "@/lib/domain/complexity";
 import type { DashboardData, Repository } from "../repository";
@@ -446,7 +446,7 @@ export const supabaseRepository: Repository = {
       return Array.from(grouped.values());
     },
     async create(session, input, sessions) {
-      assertCan(session.perfil, "create_edit_event");
+      assertCanCreateEvent(session.perfil);
       const db = getSupabaseServiceClient();
       const companyId = requireCompany(session);
       const row = unwrap<Row>(
@@ -478,7 +478,7 @@ export const supabaseRepository: Repository = {
       return event;
     },
     async update(session, id, input) {
-      assertCan(session.perfil, "create_edit_event");
+      await assertCanEditEvent(session, id);
       const db = getSupabaseServiceClient();
       const companyId = requireCompany(session);
       const row = unwrap<Row>(
@@ -513,7 +513,7 @@ export const supabaseRepository: Repository = {
       return (data ?? []).map(mapEventSession);
     },
     async replaceSessions(session, eventId, sessions) {
-      assertCan(session.perfil, "create_edit_event");
+      await assertCanEditEvent(session, eventId);
       const db = getSupabaseServiceClient();
       await assertEventInCompany(session, eventId);
       await db.from("event_sessions").delete().eq("event_id", eventId);
@@ -799,6 +799,27 @@ async function assertEventInCompany(session: AuthSession, eventId: string) {
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) throw new Error("Evento não encontrado.");
+}
+
+/**
+ * Quem só tem "create_event" (Operador) só pode continuar editando o
+ * próprio rascunho ainda não publicado — edição plena de qualquer evento
+ * é exclusiva de "create_edit_event" (Gestor/Admin).
+ */
+async function assertCanEditEvent(session: AuthSession, eventId: string) {
+  if (can(session.perfil, "create_edit_event")) return;
+  if (!can(session.perfil, "create_event")) throw new PermissionError("create_edit_event");
+  const db = getSupabaseServiceClient();
+  const { data, error } = await db
+    .from("events")
+    .select("created_by, status")
+    .eq("id", eventId)
+    .eq("company_id", requireCompany(session))
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data || data.created_by !== session.userId || data.status !== "rascunho") {
+    throw new PermissionError("create_edit_event");
+  }
 }
 
 async function updateEventStatus(
