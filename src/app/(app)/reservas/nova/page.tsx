@@ -1,5 +1,7 @@
+import { redirect } from "next/navigation";
 import { requireAuthSession } from "@/lib/auth/session";
 import { getRepository } from "@/lib/data";
+import { can } from "@/lib/domain/permissions";
 import { Card, CardHeader, Field, Input, Select, Textarea, Banner } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/Button";
 import { PageHeader } from "@/components/layout/Breadcrumb";
@@ -11,6 +13,7 @@ export default async function NewReservationPage({
   searchParams: Promise<{ error?: string; spaceId?: string; eventId?: string }>;
 }) {
   const session = await requireAuthSession();
+  if (!can(session.perfil, "manage_reservations")) redirect("/reservas/buscar");
   const repository = getRepository();
   const { error, spaceId, eventId } = await searchParams;
   const spaces = await repository.spaces.list(session, { status: "ativo" });

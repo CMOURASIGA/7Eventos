@@ -3,6 +3,7 @@
 import type { Company, User } from "@/lib/domain/types";
 import { ROLE_LABELS } from "@/lib/domain/types";
 import { logout } from "@/lib/auth/actions";
+import { can } from "@/lib/domain/permissions";
 import { Button } from "@/components/ui/Button";
 import { ICONS } from "./icons";
 import { DemoResetButton } from "./DemoResetButton";
@@ -20,6 +21,7 @@ export function Header({
   mobileNavOpen: boolean;
   onToggleMobileNav: () => void;
 }) {
+  const canResetDemo = can(user.perfil, "manage_company_settings");
   return (
     <header className="h-16 shrink-0 border-b border-border-subtle bg-white/95 backdrop-blur flex items-center justify-between px-4 md:px-6 gap-4">
       <div className="flex items-center gap-3 min-w-0 shrink-0">
@@ -63,7 +65,7 @@ export function Header({
       </form>
 
       <div className="flex items-center gap-3 shrink-0">
-        {isDemo && <DemoResetButton />}
+        {isDemo && canResetDemo && <DemoResetButton />}
 
         <div className="hidden sm:flex items-center gap-2 pl-3 border-l border-border-subtle">
           <div

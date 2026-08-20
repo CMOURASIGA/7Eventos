@@ -42,9 +42,11 @@ export default async function SearchReservationsPage({
           <h1 className="text-xl font-semibold text-[var(--foreground)]">Reservas</h1>
           <p className="text-sm text-fg-muted">Todas as reservas da empresa. Use os filtros para refinar.</p>
         </div>
-        <ButtonLink href="/reservas/nova" size="sm">
-          Nova reserva
-        </ButtonLink>
+        {canManage && (
+          <ButtonLink href="/reservas/nova" size="sm">
+            Nova reserva
+          </ButtonLink>
+        )}
       </div>
 
       {params.created && <Banner tone="success">Reserva criada com sucesso.</Banner>}

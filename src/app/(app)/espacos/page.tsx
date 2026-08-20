@@ -11,6 +11,7 @@ export default async function EspacosHubPage() {
   const repository = getRepository();
   const spaces = await repository.spaces.list(session);
   const canManage = can(session.perfil, "manage_spaces");
+  const canManageReservations = can(session.perfil, "manage_reservations");
 
   return (
     <div className="space-y-6">
@@ -28,9 +29,11 @@ export default async function EspacosHubPage() {
           <ButtonLink href="/espacos/buscar" variant="secondary" size="sm">
             <ICONS.search /> Buscar espaço
           </ButtonLink>
-          <ButtonLink href="/reservas/nova" variant="secondary" size="sm">
-            Nova reserva
-          </ButtonLink>
+          {canManageReservations && (
+            <ButtonLink href="/reservas/nova" variant="secondary" size="sm">
+              Nova reserva
+            </ButtonLink>
+          )}
           <ButtonLink href="/reservas/disponibilidade" variant="secondary" size="sm">
             Verificar disponibilidade
           </ButtonLink>
