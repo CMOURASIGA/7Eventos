@@ -2,6 +2,7 @@ import { requireAuthSession } from "@/lib/auth/session";
 import { getRepository } from "@/lib/data";
 import { Card, CardHeader, Field, Input, Select, Banner } from "@/components/ui/primitives";
 import { Button, ButtonLink } from "@/components/ui/Button";
+import { PageHeader } from "@/components/layout/Breadcrumb";
 
 interface SearchParams {
   spaceId?: string;
@@ -33,12 +34,12 @@ export default async function AvailabilityPage({
 
   return (
     <div className="max-w-2xl space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-[var(--foreground)]">Verificar disponibilidade</h1>
-        <p className="text-sm text-fg-muted">
-          Considera empresa, espaço, período, capacidade, status do espaço e reservas conflitantes.
-        </p>
-      </div>
+      <PageHeader
+        breadcrumb={[{ label: "Reservas", href: "/reservas/buscar" }, { label: "Verificar disponibilidade" }]}
+        backHref="/reservas/buscar"
+        title="Verificar disponibilidade"
+        description="Considera espaço, período, capacidade e reservas já existentes que possam conflitar."
+      />
 
       <Card>
         <form className="p-5 space-y-4">

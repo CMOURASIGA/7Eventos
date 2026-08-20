@@ -12,7 +12,6 @@ import { updateReservationStatus } from "../actions";
 interface SearchParams {
   spaceId?: string;
   status?: string;
-  q?: string;
   created?: string;
 }
 
@@ -24,16 +23,13 @@ export default async function SearchReservationsPage({
   const session = await requireAuthSession();
   const repository = getRepository();
   const params = await searchParams;
-  const searched = params.q === "1";
 
   const [spaces, results] = await Promise.all([
     repository.spaces.list(session),
-    searched
-      ? repository.reservations.list(session, {
-          spaceId: params.spaceId || undefined,
-          status: params.status || undefined,
-        })
-      : Promise.resolve([]),
+    repository.reservations.list(session, {
+      spaceId: params.spaceId || undefined,
+      status: params.status || undefined,
+    }),
   ]);
 
   const spaceById = new Map(spaces.map((s) => [s.id, s]));
@@ -43,8 +39,8 @@ export default async function SearchReservationsPage({
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-[var(--foreground)]">Buscar reservas</h1>
-          <p className="text-sm text-fg-muted">Consulte reservas por espaço e status.</p>
+          <h1 className="text-xl font-semibold text-[var(--foreground)]">Reservas</h1>
+          <p className="text-sm text-fg-muted">Todas as reservas da empresa. Use os filtros para refinar.</p>
         </div>
         <ButtonLink href="/reservas/nova" size="sm">
           Nova reserva
@@ -55,7 +51,6 @@ export default async function SearchReservationsPage({
 
       <Card>
         <form className="p-5 grid sm:grid-cols-3 gap-4 items-end">
-          <input type="hidden" name="q" value="1" />
           <Field label="Espaço" htmlFor="spaceId">
             <Select id="spaceId" name="spaceId" defaultValue={params.spaceId ?? ""}>
               <option value="">Todos</option>
@@ -76,63 +71,52 @@ export default async function SearchReservationsPage({
               ))}
             </Select>
           </Field>
-          <Button type="submit">Buscar</Button>
+          <Button type="submit">Filtrar</Button>
         </form>
       </Card>
 
-      {!searched ? (
-        <Card>
-          <EmptyState title="Informe filtros e clique em buscar" description="Os resultados aparecem aqui após a primeira pesquisa." />
-        </Card>
-      ) : (
-        <Card>
-          <CardHeader title="Resultados" description={`${results.length} reserva(s) encontrada(s)`} />
-          {results.length === 0 ? (
-            <EmptyState title="Nenhuma reserva encontrada para os filtros informados." />
-          ) : (
-            <ul className="divide-y divide-border-subtle">
-              {results.map((reservation) => {
-                const space = spaceById.get(reservation.spaceId);
-                return (
-                  <li key={reservation.id} className="px-5 py-3 flex items-center justify-between gap-4 flex-wrap">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-[var(--foreground)]">
-                        {space?.nome ?? "Espaço"} — {reservation.motivo}
-                      </p>
-                      <p className="text-xs text-fg-muted">
-                        {formatDateTime(reservation.inicio)} até {formatDateTime(reservation.fim)}
-                        {reservation.eventId && (
-                          <>
-                            {" · "}
-                            <Link href={`/eventos/${reservation.eventId}`} className="text-brand-700 hover:underline">
-                              evento vinculado
-                            </Link>
-                          </>
-                        )}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge tone={statusTone(reservation.status)}>{RESERVATION_STATUS_LABELS[reservation.status]}</Badge>
-                      {canManage && reservation.status !== "cancelada" && reservation.status !== "concluida" && (
-                        <ConfirmButton
-                          size="sm"
-                          variant="secondary"
-                          title="Cancelar reserva"
-                          description="Esta ação libera o espaço para o período informado."
-                          confirmLabel="Cancelar reserva"
-                          onConfirm={updateReservationStatus.bind(null, reservation.id, "cancelada")}
-                        >
-                          Cancelar
-                        </ConfirmButton>
-                      )}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </Card>
-      )}
+      <Card>
+        <CardHeader title="Resultados" description={`${results.length} reserva(s) encontrada(s)`} />
+        {results.length === 0 ? (
+          <EmptyState title="Nenhuma reserva encontrada para os filtros informados." />
+        ) : (
+          <ul className="divide-y divide-border-subtle">
+            {results.map((reservation) => {
+              const space = spaceById.get(reservation.spaceId);
+              const contextLabel = `reserva de ${space?.nome ?? "espaço"} (${reservation.motivo})`;
+              return (
+                <li key={reservation.id} className="px-5 py-3 flex items-center justify-between gap-4 flex-wrap">
+                  <Link href={`/reservas/${reservation.id}`} className="min-w-0 hover:text-brand-700">
+                    <p className="text-sm font-medium text-[var(--foreground)]">
+                      {space?.nome ?? "Espaço"} — {reservation.motivo}
+                    </p>
+                    <p className="text-xs text-fg-muted">
+                      {formatDateTime(reservation.inicio)} até {formatDateTime(reservation.fim)}
+                      {reservation.eventId && " · vinculada a um evento"}
+                    </p>
+                  </Link>
+                  <div className="flex items-center gap-2">
+                    <Badge tone={statusTone(reservation.status)}>{RESERVATION_STATUS_LABELS[reservation.status]}</Badge>
+                    {canManage && reservation.status !== "cancelada" && reservation.status !== "concluida" && (
+                      <ConfirmButton
+                        size="sm"
+                        variant="secondary"
+                        title="Cancelar reserva"
+                        description={`A ${contextLabel} será cancelada e o período ficará disponível novamente.`}
+                        confirmLabel="Cancelar reserva"
+                        aria-label={`Cancelar ${contextLabel}`}
+                        onConfirm={updateReservationStatus.bind(null, reservation.id, "cancelada")}
+                      >
+                        Cancelar
+                      </ConfirmButton>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Card>
     </div>
   );
 }
