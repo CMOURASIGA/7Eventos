@@ -20,6 +20,7 @@ export default async function EditWizardStepPage({
   const session = await requireAuthSession();
   if (!canCreateEvent(session.perfil)) redirect("/eventos?negado=1");
   const canEditAnyEvent = can(session.perfil, "create_edit_event");
+  const canViewFinancials = can(session.perfil, "view_financials");
 
   const repository = getRepository();
   const { id } = await params;
@@ -213,10 +214,12 @@ export default async function EditWizardStepPage({
             <Field label="Jornada do participante" htmlFor="jornadaParticipante">
               <Textarea id="jornadaParticipante" name="jornadaParticipante" defaultValue={event.jornadaParticipante} />
             </Field>
-            <label className="flex items-center gap-2 text-sm text-[var(--foreground)]">
-              <input type="checkbox" name="previstoOrcamento" defaultChecked={event.previstoOrcamento} className="rounded" />
-              Previsto em orçamento
-            </label>
+            {canViewFinancials && (
+              <label className="flex items-center gap-2 text-sm text-[var(--foreground)]">
+                <input type="checkbox" name="previstoOrcamento" defaultChecked={event.previstoOrcamento} className="rounded" />
+                Previsto em orçamento
+              </label>
+            )}
             <StepActions eventId={id} />
           </form>
         </Card>
