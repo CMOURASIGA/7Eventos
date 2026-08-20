@@ -36,16 +36,24 @@ export default async function GlobalSearchPage({
 
   const spaceById = new Map((await repository.spaces.list(session)).map((s) => [s.id, s]));
   const totalResults = events.length + spaces.length + matchingReservations.length + matchingUsers.length;
+  const canSearchUsers = can(session.perfil, "manage_company_users");
+  const searchScopeLabel = canSearchUsers ? "eventos, espaços, reservas e usuários" : "eventos, espaços e reservas";
 
   return (
     <div className="space-y-6">
-      <PageHeader breadcrumb={[{ label: "Busca" }]} backHref="/dashboard" title="Busca global" description="Pesquise eventos, espaços, reservas e usuários." />
+      <PageHeader breadcrumb={[{ label: "Busca" }]} backHref="/dashboard" title="Busca global" description={`Pesquise ${searchScopeLabel}.`} />
 
       <Card>
         <form className="p-5 flex gap-3">
           <div className="flex-1">
             <Field label="Termo de busca" htmlFor="q">
-              <Input id="q" name="q" defaultValue={query} autoFocus placeholder="Nome do evento, espaço, reserva ou pessoa..." />
+              <Input
+                id="q"
+                name="q"
+                defaultValue={query}
+                autoFocus
+                placeholder={canSearchUsers ? "Nome do evento, espaço, reserva ou pessoa..." : "Nome do evento, espaço ou reserva..."}
+              />
             </Field>
           </div>
           <Button type="submit" className="self-end">

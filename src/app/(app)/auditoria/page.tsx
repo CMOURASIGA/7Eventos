@@ -23,7 +23,7 @@ export default async function AuditPage({
   searchParams: Promise<{ dataInicial?: string; dataFinal?: string; entidade?: string }>;
 }) {
   const session = await requireAuthSession();
-  if (!can(session.perfil, "view_audit")) redirect("/dashboard");
+  if (!can(session.perfil, "view_audit")) redirect("/dashboard?negado=1");
 
   const repository = getRepository();
   const users = await repository.users.list(session);

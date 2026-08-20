@@ -4,13 +4,13 @@ import { getRepository } from "@/lib/data";
 import { EVENT_STATUS_LABELS } from "@/lib/domain/types";
 import { COMPLEXITY_LEVEL_LABELS } from "@/lib/domain/complexity";
 import { RESERVATION_STATUS_LABELS } from "@/lib/domain/types";
-import { Card, CardHeader, KPICard, Badge, EmptyState } from "@/components/ui/primitives";
+import { Card, CardHeader, KPICard, Badge, EmptyState, Banner } from "@/components/ui/primitives";
 import { ICONS } from "@/components/layout/icons";
 
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; negado?: string }>;
 }) {
   const session = await requireAuthSession();
   const repository = getRepository();
@@ -47,6 +47,9 @@ export default async function DashboardPage({
 
   return (
     <div className="space-y-6">
+      {params.negado === "1" && (
+        <Banner tone="warning">Você não tem permissão para acessar essa funcionalidade.</Banner>
+      )}
       <div className="page-hero flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-semibold text-[var(--foreground)]">Dashboard</h1>

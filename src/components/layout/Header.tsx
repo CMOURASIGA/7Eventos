@@ -22,6 +22,8 @@ export function Header({
   onToggleMobileNav: () => void;
 }) {
   const canResetDemo = can(user.perfil, "manage_company_settings");
+  const canSearchUsers = can(user.perfil, "manage_company_users");
+  const searchScopeLabel = canSearchUsers ? "eventos, espaços, reservas ou usuários" : "eventos, espaços ou reservas";
   return (
     <header className="h-16 shrink-0 border-b border-border-subtle bg-white/95 backdrop-blur flex items-center justify-between px-4 md:px-6 gap-4">
       <div className="flex items-center gap-3 min-w-0 shrink-0">
@@ -49,13 +51,13 @@ export function Header({
       </div>
 
       <form action="/buscar" className="hidden md:flex flex-1 max-w-sm items-center gap-1.5">
-        <label className="relative w-full" title="Busque por título de evento, nome de espaço, motivo de reserva ou usuário e pressione Enter">
-          <span className="sr-only">Buscar eventos, espaços, reservas ou usuários</span>
+        <label className="relative w-full" title={`Busque por ${searchScopeLabel} e pressione Enter`}>
+          <span className="sr-only">Buscar {searchScopeLabel}</span>
           <ICONS.search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-muted" />
           <input
             type="search"
             name="q"
-            placeholder="Buscar eventos, espaços, reservas, usuários..."
+            placeholder={`Buscar ${searchScopeLabel}...`}
             className="w-full rounded-[var(--radius-sm)] border border-border bg-white pl-8 pr-3 py-1.5 text-sm placeholder:text-fg-muted focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
           />
         </label>

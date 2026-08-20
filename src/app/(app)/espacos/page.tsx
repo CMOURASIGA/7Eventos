@@ -2,19 +2,25 @@ import Link from "next/link";
 import { requireAuthSession } from "@/lib/auth/session";
 import { getRepository } from "@/lib/data";
 import { can } from "@/lib/domain/permissions";
-import { Card, CardHeader, Badge, EmptyState } from "@/components/ui/primitives";
+import { Card, CardHeader, Badge, EmptyState, Banner } from "@/components/ui/primitives";
 import { ButtonLink } from "@/components/ui/Button";
 import { ICONS } from "@/components/layout/icons";
 
-export default async function EspacosHubPage() {
+export default async function EspacosHubPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ negado?: string }>;
+}) {
   const session = await requireAuthSession();
   const repository = getRepository();
+  const { negado } = await searchParams;
   const spaces = await repository.spaces.list(session);
   const canManage = can(session.perfil, "manage_spaces");
   const canManageReservations = can(session.perfil, "manage_reservations");
 
   return (
     <div className="space-y-6">
+      {negado === "1" && <Banner tone="warning">Você não tem permissão para acessar essa funcionalidade.</Banner>}
       <div className="page-hero flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-semibold text-[var(--foreground)]">Espaços</h1>

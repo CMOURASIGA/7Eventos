@@ -15,7 +15,7 @@ export default async function UsersAdminPage({
   searchParams: Promise<{ error?: string; created?: string }>;
 }) {
   const session = await requireAuthSession();
-  if (!can(session.perfil, "manage_company_users")) redirect("/dashboard");
+  if (!can(session.perfil, "manage_company_users")) redirect("/dashboard?negado=1");
 
   const repository = getRepository();
   const { error, created } = await searchParams;

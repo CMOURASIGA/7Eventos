@@ -12,7 +12,7 @@ export default async function NewSpacePage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const session = await requireAuthSession();
-  if (!can(session.perfil, "manage_spaces")) redirect("/espacos");
+  if (!can(session.perfil, "manage_spaces")) redirect("/espacos?negado=1");
   const { error } = await searchParams;
 
   return (

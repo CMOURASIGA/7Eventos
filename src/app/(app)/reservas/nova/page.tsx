@@ -13,7 +13,7 @@ export default async function NewReservationPage({
   searchParams: Promise<{ error?: string; spaceId?: string; eventId?: string }>;
 }) {
   const session = await requireAuthSession();
-  if (!can(session.perfil, "manage_reservations")) redirect("/reservas/buscar");
+  if (!can(session.perfil, "manage_reservations")) redirect("/reservas/buscar?negado=1");
   const repository = getRepository();
   const { error, spaceId, eventId } = await searchParams;
   const spaces = await repository.spaces.list(session, { status: "ativo" });

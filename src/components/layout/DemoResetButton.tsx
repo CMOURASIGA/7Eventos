@@ -9,7 +9,7 @@ export function DemoResetButton() {
       variant="secondary"
       size="sm"
       title="Restaurar dados de demonstração?"
-      description="Todos os eventos, reservas, espaços e demais registros voltam ao estado inicial de demonstração. Alterações feitas nesta sessão serão perdidas."
+      description="Os dados atuais serão substituídos pelo conjunto original de demonstração. A ação afeta toda a empresa demonstrativa (todos os usuários verão a base reiniciada) e qualquer alteração feita durante esta sessão — eventos, reservas, espaços e demais registros — será perdida."
       confirmLabel="Restaurar dados"
       onConfirm={() => resetDemoData()}
     >

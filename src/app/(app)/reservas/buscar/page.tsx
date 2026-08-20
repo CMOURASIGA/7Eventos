@@ -13,6 +13,7 @@ interface SearchParams {
   spaceId?: string;
   status?: string;
   created?: string;
+  negado?: string;
 }
 
 export default async function SearchReservationsPage({
@@ -49,6 +50,9 @@ export default async function SearchReservationsPage({
         )}
       </div>
 
+      {params.negado === "1" && (
+        <Banner tone="warning">Você não tem permissão para acessar essa funcionalidade.</Banner>
+      )}
       {params.created && <Banner tone="success">Reserva criada com sucesso.</Banner>}
 
       <Card>
