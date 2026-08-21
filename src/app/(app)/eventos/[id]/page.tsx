@@ -290,6 +290,9 @@ export default async function EventDetailPage({
         description={`${event.demandante} · ${event.categoria}${event.tematica ? ` · ${event.tematica}` : ""}`}
         actions={
           <>
+            <ButtonLink href={`/eventos/${id}/atlas`} variant="secondary" size="sm">
+              Atlas
+            </ButtonLink>
             {canEdit && (
               <ButtonLink href={`/eventos/${id}/editar`} variant="secondary" size="sm">
                 Editar

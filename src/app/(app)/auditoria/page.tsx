@@ -15,6 +15,7 @@ const ACTION_LABELS: Record<string, string> = {
   conclusao: "Conclusão",
   login: "Login",
   administrativo: "Administrativo",
+  interacao_ia: "Interação com Atlas",
 };
 
 export default async function AuditPage({
