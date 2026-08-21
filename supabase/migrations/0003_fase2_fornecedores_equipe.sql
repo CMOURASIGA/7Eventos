@@ -209,18 +209,30 @@ create policy event_team_members_write on event_team_members for all
 -- Privilégios explícitos na Data API (PostgREST)
 --
 -- O 7Eventos só acessa o Postgres pelo cliente de serviço no servidor
--- (src/lib/data/supabase/client.ts, service_role — sempre ignora RLS e
--- não depende de GRANT). Nenhum código do produto usa um client Supabase
--- no navegador com JWT de usuário para consultar estas tabelas (a
--- anon key documentada em .env.example serve só para
--- auth.signInWithPassword em src/lib/auth/actions.ts, dentro de uma
--- Server Action — nunca chega ao bundle do cliente). Como a exposição
--- de tabelas via Data API passou a ser opt-in em projetos novos do
--- Supabase (e pode variar por configuração do projeto), revogamos
--- explicitamente de "authenticated"/"anon" em vez de confiar no
--- default: a intenção "só o backend acessa" fica registrada no schema,
--- e não depende de nenhuma opção do painel do Supabase.
+-- (src/lib/data/supabase/client.ts, role service_role). Nenhum código do
+-- produto usa um client Supabase no navegador com JWT de usuário para
+-- consultar estas tabelas (a anon key documentada em .env.example
+-- serve só para auth.signInWithPassword em src/lib/auth/actions.ts,
+-- dentro de uma Server Action — nunca chega ao bundle do cliente).
+-- service_role IGNORA RLS (BYPASSRLS), mas isso não dispensa GRANT —
+-- RLS e privilégios são camadas independentes, e o PostgREST aplica os
+-- privilégios normais do Postgres antes de chegar às policies. Como a
+-- exposição de tabelas via Data API passou a ser opt-in em projetos
+-- novos do Supabase (privilégios automáticos desativados), sem GRANT
+-- explícito o service_role recebe "42501 permission denied for table"
+-- ao acessar via PostgREST. Por isso: REVOKE explícito de
+-- "authenticated"/"anon" (ninguém no navegador acessa direto) e GRANT
+-- explícito para "service_role" (é assim que o backend acessa) — a
+-- intenção "só o backend acessa" fica registrada no schema, e não
+-- depende de nenhuma opção do painel do Supabase.
 -- ---------------------------------------------------------------------
 
 revoke all on suppliers, event_suppliers, event_supplier_financials, event_team_members
   from authenticated, anon;
+
+grant select, insert, update, delete on
+  suppliers,
+  event_suppliers,
+  event_supplier_financials,
+  event_team_members
+  to service_role;
