@@ -20,9 +20,11 @@ import {
   mapComplexity,
   mapEvent,
   mapEventSession,
+  mapEventDocument,
   mapEventSupplier,
   mapEventTeamMember,
   mapReservation,
+  mapScheduleItem,
   mapSpace,
   mapStatusHistory,
   mapSupplier,
@@ -933,6 +935,256 @@ export const supabaseRepository: Repository = {
       const companyId = requireCompany(session);
       const { error } = await db.from("event_team_members").delete().eq("id", id).eq("company_id", companyId);
       if (error) throw new Error(error.message);
+    },
+  },
+
+  schedule: {
+    async listByEvent(session, eventId) {
+      const db = getSupabaseServiceClient();
+      await assertEventInCompany(session, eventId);
+      const { data, error } = await db
+        .from("schedule_items")
+        .select("*")
+        .eq("event_id", eventId)
+        .order("inicio");
+      if (error) throw new Error(error.message);
+      return (data ?? []).map(mapScheduleItem);
+    },
+    async create(session, input) {
+      assertCan(session.perfil, "manage_schedule");
+      const db = getSupabaseServiceClient();
+      const companyId = requireCompany(session);
+      await assertEventInCompany(session, input.eventId);
+      if (input.responsavelId) {
+        const { data: userRow, error: userError } = await db
+          .from("profiles")
+          .select("id")
+          .eq("id", input.responsavelId)
+          .eq("company_id", companyId)
+          .maybeSingle();
+        if (userError) throw new Error(userError.message);
+        if (!userRow) throw new Error("Responsável inválido para esta empresa.");
+      }
+      if (input.dependeDeId) {
+        const { data: depRow, error: depError } = await db
+          .from("schedule_items")
+          .select("id")
+          .eq("id", input.dependeDeId)
+          .eq("event_id", input.eventId)
+          .maybeSingle();
+        if (depError) throw new Error(depError.message);
+        if (!depRow) throw new Error("Atividade de dependência não encontrada neste evento.");
+      }
+      if (!(input.fim > input.inicio)) throw new Error("O fim da atividade precisa ser após o início.");
+
+      const row = unwrap<Row>(
+        await db
+          .from("schedule_items")
+          .insert({
+            company_id: companyId,
+            event_id: input.eventId,
+            titulo: input.titulo,
+            descricao: input.descricao,
+            inicio: input.inicio,
+            fim: input.fim,
+            responsavel_id: input.responsavelId,
+            depende_de_id: input.dependeDeId,
+            prioridade: input.prioridade,
+            status: input.status,
+            observacao: input.observacao,
+          })
+          .select("*")
+          .single(),
+      );
+      const item = mapScheduleItem(row);
+      await recordAudit(session, { acao: "criacao", entidade: "cronograma", entidadeId: item.id, descricao: `Atividade "${item.titulo}" adicionada ao cronograma.` });
+      return item;
+    },
+    async update(session, id, input) {
+      assertCan(session.perfil, "manage_schedule");
+      const db = getSupabaseServiceClient();
+      const companyId = requireCompany(session);
+      const { data: current, error: currentError } = await db
+        .from("schedule_items")
+        .select("event_id, inicio, fim")
+        .eq("id", id)
+        .eq("company_id", companyId)
+        .maybeSingle();
+      if (currentError) throw new Error(currentError.message);
+      if (!current) throw new Error("Atividade não encontrada.");
+      if (input.responsavelId) {
+        const { data: userRow, error: userError } = await db
+          .from("profiles")
+          .select("id")
+          .eq("id", input.responsavelId)
+          .eq("company_id", companyId)
+          .maybeSingle();
+        if (userError) throw new Error(userError.message);
+        if (!userRow) throw new Error("Responsável inválido para esta empresa.");
+      }
+      if (input.dependeDeId) {
+        if (input.dependeDeId === id) throw new Error("Uma atividade não pode depender dela mesma.");
+        const { data: depRow, error: depError } = await db
+          .from("schedule_items")
+          .select("id")
+          .eq("id", input.dependeDeId)
+          .eq("event_id", current.event_id)
+          .maybeSingle();
+        if (depError) throw new Error(depError.message);
+        if (!depRow) throw new Error("Atividade de dependência não encontrada neste evento.");
+      }
+      const inicio = input.inicio ?? current.inicio;
+      const fim = input.fim ?? current.fim;
+      if (!(fim > inicio)) throw new Error("O fim da atividade precisa ser após o início.");
+
+      const row = unwrap<Row>(
+        await db
+          .from("schedule_items")
+          .update({
+            titulo: input.titulo,
+            descricao: input.descricao,
+            inicio: input.inicio,
+            fim: input.fim,
+            responsavel_id: input.responsavelId,
+            depende_de_id: input.dependeDeId,
+            prioridade: input.prioridade,
+            status: input.status,
+            observacao: input.observacao,
+          })
+          .eq("id", id)
+          .eq("company_id", companyId)
+          .select("*")
+          .single(),
+      );
+      const item = mapScheduleItem(row);
+      await recordAudit(session, { acao: "edicao", entidade: "cronograma", entidadeId: item.id, descricao: `Atividade "${item.titulo}" atualizada.` });
+      return item;
+    },
+    async remove(session, id) {
+      assertCan(session.perfil, "manage_schedule");
+      const db = getSupabaseServiceClient();
+      const companyId = requireCompany(session);
+      // Atividades que dependiam desta ficam sem dependência (a FK composta
+      // é MATCH SIMPLE/nullable — não há "on delete cascade" aqui), em vez
+      // de manter uma referência solta a um id removido.
+      await db.from("schedule_items").update({ depende_de_id: null }).eq("depende_de_id", id).eq("company_id", companyId);
+      const { error } = await db.from("schedule_items").delete().eq("id", id).eq("company_id", companyId);
+      if (error) throw new Error(error.message);
+    },
+  },
+
+  documents: {
+    async listByEvent(session, eventId, options) {
+      const db = getSupabaseServiceClient();
+      await assertEventInCompany(session, eventId);
+      let query = db.from("event_documents").select("*").eq("event_id", eventId);
+      if (!options?.includeArchived) query = query.eq("status", "ativo");
+      const { data, error } = await query.order("created_at", { ascending: false });
+      if (error) throw new Error(error.message);
+      return (data ?? []).map(mapEventDocument);
+    },
+    async create(session, input) {
+      assertCan(session.perfil, "manage_documents");
+      const db = getSupabaseServiceClient();
+      const companyId = requireCompany(session);
+      await assertEventInCompany(session, input.eventId);
+      const { data: userRow, error: userError } = await db
+        .from("profiles")
+        .select("id")
+        .eq("id", input.responsavelId)
+        .eq("company_id", companyId)
+        .maybeSingle();
+      if (userError) throw new Error(userError.message);
+      if (!userRow) throw new Error("Responsável inválido para esta empresa.");
+
+      const row = unwrap<Row>(
+        await db
+          .from("event_documents")
+          .insert({
+            company_id: companyId,
+            event_id: input.eventId,
+            categoria: input.categoria,
+            titulo: input.titulo,
+            descricao: input.descricao,
+            url_referencia: input.urlReferencia,
+            nome_arquivo: input.nomeArquivo,
+            responsavel_id: input.responsavelId,
+            status: "ativo",
+          })
+          .select("*")
+          .single(),
+      );
+      const document = mapEventDocument(row);
+      await recordAudit(session, { acao: "criacao", entidade: "documento", entidadeId: document.id, descricao: `Documento "${document.titulo}" registrado.` });
+      return document;
+    },
+    async update(session, id, input) {
+      assertCan(session.perfil, "manage_documents");
+      const db = getSupabaseServiceClient();
+      const companyId = requireCompany(session);
+      if (input.responsavelId) {
+        const { data: userRow, error: userError } = await db
+          .from("profiles")
+          .select("id")
+          .eq("id", input.responsavelId)
+          .eq("company_id", companyId)
+          .maybeSingle();
+        if (userError) throw new Error(userError.message);
+        if (!userRow) throw new Error("Responsável inválido para esta empresa.");
+      }
+      const row = unwrap<Row>(
+        await db
+          .from("event_documents")
+          .update({
+            categoria: input.categoria,
+            titulo: input.titulo,
+            descricao: input.descricao,
+            url_referencia: input.urlReferencia,
+            nome_arquivo: input.nomeArquivo,
+            responsavel_id: input.responsavelId,
+          })
+          .eq("id", id)
+          .eq("company_id", companyId)
+          .select("*")
+          .single(),
+      );
+      const document = mapEventDocument(row);
+      await recordAudit(session, { acao: "edicao", entidade: "documento", entidadeId: document.id, descricao: `Documento "${document.titulo}" atualizado.` });
+      return document;
+    },
+    async archive(session, id) {
+      assertCan(session.perfil, "manage_documents");
+      const db = getSupabaseServiceClient();
+      const companyId = requireCompany(session);
+      const row = unwrap<Row>(
+        await db
+          .from("event_documents")
+          .update({ status: "arquivado", arquivado_em: new Date().toISOString() })
+          .eq("id", id)
+          .eq("company_id", companyId)
+          .select("*")
+          .single(),
+      );
+      const document = mapEventDocument(row);
+      await recordAudit(session, { acao: "edicao", entidade: "documento", entidadeId: document.id, descricao: `Documento "${document.titulo}" arquivado.` });
+      return document;
+    },
+    async restore(session, id) {
+      assertCan(session.perfil, "manage_documents");
+      const db = getSupabaseServiceClient();
+      const companyId = requireCompany(session);
+      const row = unwrap<Row>(
+        await db
+          .from("event_documents")
+          .update({ status: "ativo", arquivado_em: null })
+          .eq("id", id)
+          .eq("company_id", companyId)
+          .select("*")
+          .single(),
+      );
+      const document = mapEventDocument(row);
+      await recordAudit(session, { acao: "edicao", entidade: "documento", entidadeId: document.id, descricao: `Documento "${document.titulo}" restaurado.` });
+      return document;
     },
   },
 

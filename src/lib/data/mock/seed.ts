@@ -4,13 +4,17 @@ import type {
   ChecklistItem,
   Company,
   ComplexityAssessment,
+  EventDocument,
   EventEntity,
   EventSession,
   EventStatus,
   EventSupplier,
   EventSupplierSituacao,
+  EventDocumentCategory,
   EventTeamMember,
   Reservation,
+  ScheduleItem,
+  ScheduleItemStatus,
   Space,
   StatusHistoryEntry,
   Supplier,
@@ -92,6 +96,8 @@ export interface SeedData {
   suppliers: Supplier[];
   eventSuppliers: EventSupplier[];
   teamMembers: EventTeamMember[];
+  scheduleItems: ScheduleItem[];
+  documents: EventDocument[];
 }
 
 export function generateSeed(): SeedData {
@@ -362,6 +368,8 @@ const STATUS_CYCLE: EventStatus[] = [
   const suppliers: Supplier[] = [];
   const eventSuppliers: EventSupplier[] = [];
   const teamMembers: EventTeamMember[] = [];
+  const scheduleItems: ScheduleItem[] = [];
+  const documents: EventDocument[] = [];
 
   const seq = {
     event: 1,
@@ -375,6 +383,8 @@ const STATUS_CYCLE: EventStatus[] = [
     supplier: 1,
     eventSupplier: 1,
     teamMember: 1,
+    scheduleItem: 1,
+    document: 1,
   };
 
   // Catálogo de fornecedores por empresa (Fase 2).
@@ -626,6 +636,80 @@ const STATUS_CYCLE: EventStatus[] = [
         });
       }
 
+      // Cronograma operacional (Fase 2) — atividades relativas ao horário
+      // principal do evento, encadeadas por dependência em ordem cronológica.
+      const scheduleTemplate = [
+        { titulo: "Montagem de estrutura e testes de som", offsetHoras: -3, duracaoHoras: 2, prioridade: "alta" as const },
+        { titulo: "Credenciamento e recepção de convidados", offsetHoras: -1, duracaoHoras: 1, prioridade: "media" as const },
+        { titulo: "Abertura oficial", offsetHoras: 0, duracaoHoras: 1, prioridade: "alta" as const },
+        { titulo: "Intervalo / coffee break", offsetHoras: Math.max(1, Math.round(duracaoHoras / 2)), duracaoHoras: 1, prioridade: "baixa" as const },
+        { titulo: "Encerramento e desmontagem", offsetHoras: duracaoHoras, duracaoHoras: 2, prioridade: "media" as const },
+      ];
+      const scheduleForEvent = pickMany(scheduleTemplate, intBetween(2, scheduleTemplate.length)).sort(
+        (a, b) => a.offsetHoras - b.offsetHoras,
+      );
+      let previousScheduleId: string | undefined;
+      for (const item of scheduleForEvent) {
+        const itemStatus: ScheduleItemStatus =
+          finalStatus === "cancelado"
+            ? "cancelado"
+            : isPast
+              ? pick(["concluido", "concluido", "concluido", "cancelado"] as const)
+              : dayOffset <= 1
+                ? pick(["pendente", "em_andamento"] as const)
+                : "pendente";
+        const id = uid("schedule", seq.scheduleItem++);
+        const itemInicio = addHours(inicio, item.offsetHoras);
+        scheduleItems.push({
+          id,
+          companyId: cfg.companyId,
+          eventId,
+          titulo: item.titulo,
+          inicio: itemInicio,
+          fim: addHours(itemInicio, item.duracaoHoras),
+          responsavelId: pick([...cfg.operators, responsavel]),
+          dependeDeId: previousScheduleId,
+          prioridade: item.prioridade,
+          status: itemStatus,
+          createdAt: event.createdAt,
+          updatedAt: event.updatedAt,
+        });
+        previousScheduleId = id;
+      }
+
+      // Documentos do evento (Fase 2) — metadados + referência (sem storage
+      // binário real provisionado ainda, ver domain/types.ts EventDocument).
+      const documentTemplate: { categoria: EventDocumentCategory; titulo: string }[] = [
+        { categoria: "proposta", titulo: "Proposta comercial enviada ao demandante" },
+        { categoria: "contrato", titulo: "Contrato de prestação de serviços" },
+        { categoria: "briefing", titulo: "Briefing do evento" },
+        { categoria: "planta", titulo: "Planta baixa do espaço" },
+        { categoria: "autorizacao", titulo: "Autorização de uso do espaço" },
+        { categoria: "apresentacao", titulo: "Apresentação institucional" },
+        { categoria: "evidencia", titulo: "Registro fotográfico do evento" },
+        { categoria: "fornecedor", titulo: "Ficha técnica de fornecedor" },
+      ];
+      const docsForEvent = pickMany(documentTemplate, intBetween(1, 4));
+      for (const doc of docsForEvent) {
+        // Evidência só existe depois do evento acontecer.
+        if (doc.categoria === "evidencia" && !isPast) continue;
+        const archived = rng() < 0.1;
+        documents.push({
+          id: uid("document", seq.document++),
+          companyId: cfg.companyId,
+          eventId,
+          categoria: doc.categoria,
+          titulo: doc.titulo,
+          urlReferencia: `https://drive.consulteventos.com.br/eventos/${eventId}/${doc.categoria}`,
+          nomeArquivo: `${doc.categoria}-${eventId}.pdf`,
+          responsavelId: pick([...cfg.operators, responsavel]),
+          status: archived ? "arquivado" : "ativo",
+          createdAt: event.createdAt,
+          updatedAt: event.updatedAt,
+          arquivadoEm: archived ? event.updatedAt : undefined,
+        });
+      }
+
       // Complexidade
       const factors = {
         publicoAlvo: intBetween(0, 3),
@@ -730,5 +814,7 @@ const STATUS_CYCLE: EventStatus[] = [
     suppliers,
     eventSuppliers,
     teamMembers,
+    scheduleItems,
+    documents,
   };
 }

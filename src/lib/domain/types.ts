@@ -347,3 +347,101 @@ export interface EventTeamMember {
   createdAt: string;
   updatedAt: string;
 }
+
+/**
+ * Fase 2 - Gestão Completa do Evento (docs/FASE_02_GESTAO.md)
+ *
+ * Fatia 2: Cronograma operacional + Documentos.
+ */
+
+export type ScheduleItemStatus = "pendente" | "em_andamento" | "concluido" | "cancelado";
+
+export const SCHEDULE_ITEM_STATUS_LABELS: Record<ScheduleItemStatus, string> = {
+  pendente: "Pendente",
+  em_andamento: "Em andamento",
+  concluido: "Concluído",
+  cancelado: "Cancelado",
+};
+
+export type ScheduleItemPriority = "baixa" | "media" | "alta";
+
+export const SCHEDULE_ITEM_PRIORITY_LABELS: Record<ScheduleItemPriority, string> = {
+  baixa: "Baixa",
+  media: "Média",
+  alta: "Alta",
+};
+
+/**
+ * Atividade do cronograma operacional de um evento. "Atrasada" e
+ * "próxima" (docs/FASE_02_GESTAO.md seção 4) não são status persistidos
+ * — são derivados na UI a partir de `fim`/`inicio` e do `status` atual,
+ * igual ao cálculo de progresso do checklist.
+ */
+export interface ScheduleItem {
+  id: string;
+  companyId: string;
+  eventId: string;
+  titulo: string;
+  descricao?: string;
+  inicio: string;
+  fim: string;
+  responsavelId?: string;
+  /** Outra atividade do mesmo evento que precisa concluir antes desta começar. */
+  dependeDeId?: string;
+  prioridade: ScheduleItemPriority;
+  status: ScheduleItemStatus;
+  observacao?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type EventDocumentCategory =
+  | "proposta"
+  | "contrato"
+  | "autorizacao"
+  | "planta"
+  | "apresentacao"
+  | "briefing"
+  | "evidencia"
+  | "fornecedor"
+  | "outros";
+
+export const EVENT_DOCUMENT_CATEGORY_LABELS: Record<EventDocumentCategory, string> = {
+  proposta: "Proposta",
+  contrato: "Contrato",
+  autorizacao: "Autorização",
+  planta: "Planta",
+  apresentacao: "Apresentação",
+  briefing: "Briefing",
+  evidencia: "Evidência",
+  fornecedor: "Fornecedor",
+  outros: "Outros",
+};
+
+export type EventDocumentStatus = "ativo" | "arquivado";
+
+/**
+ * Registro da central documental de um evento. Sem um provedor de
+ * armazenamento de arquivos provisionado ainda (ver docs/FASE_02_GESTAO.md
+ * seção 5 e docs/architecture/DATABASE.md), o "upload" hoje é uma
+ * referência (link externo e/ou nome do arquivo) mais os metadados
+ * exigidos — categoria, responsável, data, vínculo com o evento. Trocar
+ * por upload binário real (Supabase Storage) no futuro não deve exigir
+ * mudança de forma no restante da aplicação, só na gravação do arquivo em
+ * si. `status`/`arquivadoEm` implementam a exclusão lógica pedida na spec.
+ */
+export interface EventDocument {
+  id: string;
+  companyId: string;
+  eventId: string;
+  categoria: EventDocumentCategory;
+  titulo: string;
+  descricao?: string;
+  urlReferencia?: string;
+  nomeArquivo?: string;
+  responsavelId: string;
+  status: EventDocumentStatus;
+  createdAt: string;
+  updatedAt: string;
+  arquivadoEm?: string;
+}

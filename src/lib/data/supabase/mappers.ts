@@ -4,11 +4,13 @@ import type {
   ChecklistItem,
   Company,
   ComplexityAssessment,
+  EventDocument,
   EventEntity,
   EventSession,
   EventSupplier,
   EventTeamMember,
   Reservation,
+  ScheduleItem,
   Space,
   StatusHistoryEntry,
   Supplier,
@@ -231,6 +233,43 @@ export function mapEventTeamMember(r: Row): EventTeamMember {
     status: r.status,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+  };
+}
+
+export function mapScheduleItem(r: Row): ScheduleItem {
+  return {
+    id: r.id,
+    companyId: r.company_id,
+    eventId: r.event_id,
+    titulo: r.titulo,
+    descricao: r.descricao ?? undefined,
+    inicio: r.inicio,
+    fim: r.fim,
+    responsavelId: r.responsavel_id ?? undefined,
+    dependeDeId: r.depende_de_id ?? undefined,
+    prioridade: r.prioridade,
+    status: r.status,
+    observacao: r.observacao ?? undefined,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export function mapEventDocument(r: Row): EventDocument {
+  return {
+    id: r.id,
+    companyId: r.company_id,
+    eventId: r.event_id,
+    categoria: r.categoria,
+    titulo: r.titulo,
+    descricao: r.descricao ?? undefined,
+    urlReferencia: r.url_referencia ?? undefined,
+    nomeArquivo: r.nome_arquivo ?? undefined,
+    responsavelId: r.responsavel_id,
+    status: r.status,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+    arquivadoEm: r.arquivado_em ?? undefined,
   };
 }
 
