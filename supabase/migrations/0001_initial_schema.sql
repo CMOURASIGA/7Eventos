@@ -45,7 +45,13 @@ create table if not exists profiles (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint profiles_company_required_unless_superadmin
-    check (perfil = 'superadmin' or company_id is not null)
+    check (perfil = 'superadmin' or company_id is not null),
+  -- Permite que outras tabelas declarem FK composta (id, company_id) ->
+  -- profiles, comprovando no próprio banco que um responsável/membro
+  -- de equipe pertence à mesma empresa da linha que o referencia (ver
+  -- 0003_fase2_fornecedores_equipe.sql). Trivialmente satisfeita por
+  -- ser (chave primária, coluna extra) — id já é único sozinho.
+  constraint profiles_id_company_unique unique (id, company_id)
 );
 
 create index if not exists idx_profiles_company on profiles (company_id);
@@ -117,7 +123,11 @@ create table if not exists events (
   created_by uuid not null references profiles (id),
   created_at timestamptz not null default now(),
   updated_by uuid not null references profiles (id),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  -- Mesma finalidade de profiles_id_company_unique: base para FK
+  -- composta (event_id, company_id) -> events em tabelas de vínculo
+  -- de outras fatias da Fase 2 (fornecedores, equipe, ...).
+  constraint events_id_company_unique unique (id, company_id)
 );
 
 create index if not exists idx_events_company on events (company_id);
