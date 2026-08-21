@@ -133,7 +133,11 @@ export default async function EventDetailPage({
     repository.events.getSessions(session, id),
     repository.reservations.list(session, { eventId: id }),
     repository.checklist.listByEvent(session, id),
-    repository.budget.getByEvent(session, id),
+    // Valores financeiros só são buscados para quem tem
+    // "view_financials" — o repositório também exige isso (defesa em
+    // profundidade), mas evitar a chamada aqui poupa uma consulta
+    // desnecessária que resultaria só em erro descartado.
+    canViewFinancials ? repository.budget.getByEvent(session, id) : Promise.resolve(null),
     repository.complexity.getLatestByEvent(session, id),
     repository.events.getStatusHistory(session, id),
     repository.users.list(session),
@@ -145,7 +149,7 @@ export default async function EventDetailPage({
     repository.documents.listByEvent(session, id, { includeArchived: true }),
     repository.registrations.listByEvent(session, id),
     repository.participants.list(session, { status: "ativo" }),
-    repository.budgetItems.listByEvent(session, id),
+    canViewFinancials ? repository.budgetItems.listByEvent(session, id) : Promise.resolve([]),
   ]);
   const spaceById = new Map((await repository.spaces.list(session)).map((s) => [s.id, s]));
 
@@ -216,19 +220,30 @@ export default async function EventDetailPage({
 
   // Financeiro detalhado (docs/FASE_02_GESTAO.md seção 9): indicadores
   // sempre derivados dos itens na hora — nunca persistidos, para nunca
-  // ficarem desatualizados em relação aos valores lançados.
+  // ficarem desatualizados em relação aos valores lançados. Cotado,
+  // contratado e realizado são estágios distintos (estimativa recebida
+  // → compromisso financeiro → gasto efetivo) e nunca são somados uns
+  // com os outros como substituto — cada indicador soma só o campo que
+  // diz o nome, para não inflar "Comprometido" com cotações que ainda
+  // não viraram contrato, nem misturar "por participante" comprometido
+  // com realizado num único número.
   const activeBudgetItems = budgetItems.filter((i) => i.status !== "cancelado");
   const orcamentoTotal = budget?.valorPrevisto ?? 0;
-  const comprometido = activeBudgetItems.reduce((sum, i) => sum + (i.valorContratado ?? i.valorCotado ?? 0), 0);
+  const cotado = activeBudgetItems.reduce((sum, i) => sum + (i.valorCotado ?? 0), 0);
+  const comprometido = activeBudgetItems.reduce((sum, i) => sum + (i.valorContratado ?? 0), 0);
   const realizado = activeBudgetItems.reduce((sum, i) => sum + (i.valorRealizado ?? 0), 0);
-  const saldo = orcamentoTotal - comprometido;
-  const variacaoRealizado = realizado - orcamentoTotal;
+  const saldoComprometido = orcamentoTotal - comprometido;
+  const saldoRealizado = orcamentoTotal - realizado;
+  const percentualExecutado = orcamentoTotal > 0 ? (realizado / orcamentoTotal) * 100 : null;
   const custoPorCategoria = new Map<string, number>();
   for (const item of activeBudgetItems) {
     const valor = item.valorRealizado ?? item.valorContratado ?? item.valorCotado ?? 0;
     custoPorCategoria.set(item.categoria, (custoPorCategoria.get(item.categoria) ?? 0) + valor);
   }
-  const custoPorParticipante = confirmedRegistrations.length > 0 ? (realizado || comprometido) / confirmedRegistrations.length : null;
+  const custoComprometidoPorParticipante =
+    confirmedRegistrations.length > 0 ? comprometido / confirmedRegistrations.length : null;
+  const custoRealizadoPorParticipante =
+    confirmedRegistrations.length > 0 ? realizado / confirmedRegistrations.length : null;
 
   const factors = complexity?.fatores ?? defaultComplexityFactors();
   const preview = calculateComplexity(factors);
@@ -1106,44 +1121,75 @@ export default async function EventDetailPage({
                 )}
               </form>
 
-              {/* Financeiro detalhado (docs/FASE_02_GESTAO.md seção 9) */}
+              {/* Financeiro detalhado (docs/FASE_02_GESTAO.md seção 9). Cotado,
+                  contratado e realizado são estágios distintos — cada
+                  indicador soma só o campo correspondente, nunca uma
+                  mistura, para não inflar "Comprometido" com cotações
+                  ainda sem contrato nem confundir o que já foi gasto com
+                  o que só foi comprometido. */}
               <div className="pt-4 border-t border-border-subtle space-y-4">
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-center">
                   <div className="rounded-[var(--radius-sm)] bg-surface-muted p-3">
                     <p className="text-base font-semibold text-[var(--foreground)]">{formatCurrency(orcamentoTotal)}</p>
                     <p className="text-xs text-fg-muted">Orçamento total</p>
                   </div>
                   <div className="rounded-[var(--radius-sm)] bg-surface-muted p-3">
+                    <p className="text-base font-semibold text-[var(--foreground)]">{formatCurrency(cotado)}</p>
+                    <p className="text-xs text-fg-muted">Cotado</p>
+                  </div>
+                  <div className="rounded-[var(--radius-sm)] bg-surface-muted p-3">
                     <p className="text-base font-semibold text-[var(--foreground)]">{formatCurrency(comprometido)}</p>
-                    <p className="text-xs text-fg-muted">Comprometido</p>
+                    <p className="text-xs text-fg-muted">Comprometido (contratado)</p>
                   </div>
                   <div className="rounded-[var(--radius-sm)] bg-surface-muted p-3">
                     <p className="text-base font-semibold text-[var(--foreground)]">{formatCurrency(realizado)}</p>
                     <p className="text-xs text-fg-muted">Realizado</p>
                   </div>
-                  <div className={`rounded-[var(--radius-sm)] p-3 ${saldo < 0 ? "bg-danger-50" : "bg-success-50"}`}>
-                    <p className={`text-base font-semibold ${saldo < 0 ? "text-danger-700" : "text-success-700"}`}>
-                      {formatCurrency(saldo)}
+                  <div className={`rounded-[var(--radius-sm)] p-3 ${saldoComprometido < 0 ? "bg-danger-50" : "bg-success-50"}`}>
+                    <p className={`text-base font-semibold ${saldoComprometido < 0 ? "text-danger-700" : "text-success-700"}`}>
+                      {formatCurrency(saldoComprometido)}
                     </p>
-                    <p className="text-xs text-fg-muted">Saldo</p>
+                    <p className="text-xs text-fg-muted">Saldo (vs. comprometido)</p>
+                  </div>
+                  <div className={`rounded-[var(--radius-sm)] p-3 ${saldoRealizado < 0 ? "bg-danger-50" : "bg-success-50"}`}>
+                    <p className={`text-base font-semibold ${saldoRealizado < 0 ? "text-danger-700" : "text-success-700"}`}>
+                      {formatCurrency(saldoRealizado)}
+                    </p>
+                    <p className="text-xs text-fg-muted">Saldo (vs. realizado)</p>
                   </div>
                 </div>
                 <p className="text-sm text-fg-muted">
-                  Variação previsto x realizado:{" "}
-                  <strong className={variacaoRealizado > 0 ? "text-danger-700" : "text-success-700"}>
-                    {variacaoRealizado > 0 ? "+" : ""}
-                    {formatCurrency(variacaoRealizado)}
-                  </strong>
-                  {custoPorParticipante != null && (
+                  {percentualExecutado != null ? (
+                    <>
+                      <strong className={percentualExecutado > 100 ? "text-danger-700" : "text-success-700"}>
+                        {percentualExecutado.toFixed(0)}%
+                      </strong>{" "}
+                      do orçamento executado (realizado sobre o total previsto)
+                    </>
+                  ) : (
+                    "Defina o valor previsto para acompanhar o percentual executado."
+                  )}
+                  {custoComprometidoPorParticipante != null && (
                     <>
                       {" "}
-                      · Custo por participante confirmado: <strong>{formatCurrency(custoPorParticipante)}</strong>
+                      · Custo comprometido por participante confirmado:{" "}
+                      <strong>{formatCurrency(custoComprometidoPorParticipante)}</strong>
+                    </>
+                  )}
+                  {custoRealizadoPorParticipante != null && (
+                    <>
+                      {" "}
+                      · Custo realizado por participante confirmado:{" "}
+                      <strong>{formatCurrency(custoRealizadoPorParticipante)}</strong>
                     </>
                   )}
                 </p>
                 {custoPorCategoria.size > 0 && (
                   <div>
                     <p className="text-xs text-fg-muted uppercase tracking-wide mb-1.5">Custo por categoria</p>
+                    <p className="text-xs text-fg-muted mb-1.5">
+                      Melhor valor disponível por item: realizado, senão contratado, senão cotado.
+                    </p>
                     <ul className="space-y-1">
                       {Array.from(custoPorCategoria.entries())
                         .sort((a, b) => b[1] - a[1])

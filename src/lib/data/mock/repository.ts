@@ -933,6 +933,12 @@ export const mockRepository: Repository = {
 
   budget: {
     async getByEvent(session, eventId) {
+      // Valores financeiros só podem ser lidos por quem tem
+      // "view_financials" — a UI já evita chamar isto para outros
+      // perfis, mas o backend não pode depender só disso (o cliente de
+      // serviço do Supabase ignora RLS; aqui, em memória, a única
+      // defesa é esta checagem).
+      assertCan(session.perfil, "view_financials");
       const store = getStore();
       const companyId = requireCompany(session);
       return store.budgets.find((b) => b.eventId === eventId && b.companyId === companyId) ?? null;
@@ -957,6 +963,9 @@ export const mockRepository: Repository = {
 
   budgetItems: {
     async listByEvent(session, eventId) {
+      // Mesma proteção de budget.getByEvent — itens de orçamento também
+      // são valor financeiro, atrás de "view_financials".
+      assertCan(session.perfil, "view_financials");
       const store = getStore();
       const companyId = requireCompany(session);
       return store.budgetItems
