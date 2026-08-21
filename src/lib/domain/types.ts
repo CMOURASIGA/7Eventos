@@ -242,7 +242,11 @@ export type AuditAction =
   | "cancelamento"
   | "conclusao"
   | "login"
-  | "administrativo";
+  | "administrativo"
+  // Fase 3 (Atlas) - docs/FASE_03_ATLAS.md seção 14: "Registrar, quando
+  // aplicável: usuário, evento, tipo de interação..." — cada pergunta ao
+  // Atlas ou resumo gerado é uma interação de IA auditável.
+  | "interacao_ia";
 
 export interface AuditLog {
   id: string;
