@@ -14,6 +14,8 @@ export async function linkSupplierToEvent(eventId: string, formData: FormData): 
 
   const valorPrevistoRaw = formData.get("valorPrevisto");
   const valorPrevisto = valorPrevistoRaw ? Number(valorPrevistoRaw) : undefined;
+  const valorContratadoRaw = formData.get("valorContratado");
+  const valorContratado = valorContratadoRaw ? Number(valorContratadoRaw) : undefined;
 
   await repository.eventSuppliers.create(session, {
     eventId,
@@ -21,6 +23,7 @@ export async function linkSupplierToEvent(eventId: string, formData: FormData): 
     servico,
     responsavelInternoId: String(formData.get("responsavelInternoId") ?? "") || undefined,
     valorPrevisto: Number.isFinite(valorPrevisto) ? valorPrevisto : undefined,
+    valorContratado: Number.isFinite(valorContratado) ? valorContratado : undefined,
     situacao: (String(formData.get("situacao") ?? "previsto") as EventSupplierSituacao),
   });
   revalidatePath(`/eventos/${eventId}`);
@@ -34,6 +37,18 @@ export async function updateEventSupplierSituacao(
   const session = await requireAuthSession();
   const repository = getRepository();
   await repository.eventSuppliers.update(session, linkId, { situacao });
+  revalidatePath(`/eventos/${eventId}`);
+}
+
+export async function updateEventSupplierValues(eventId: string, linkId: string, formData: FormData): Promise<void> {
+  const session = await requireAuthSession();
+  const repository = getRepository();
+  const valorPrevistoRaw = formData.get("valorPrevisto");
+  const valorContratadoRaw = formData.get("valorContratado");
+  await repository.eventSuppliers.update(session, linkId, {
+    valorPrevisto: valorPrevistoRaw ? Number(valorPrevistoRaw) : undefined,
+    valorContratado: valorContratadoRaw ? Number(valorContratadoRaw) : undefined,
+  });
   revalidatePath(`/eventos/${eventId}`);
 }
 

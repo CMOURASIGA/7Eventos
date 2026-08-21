@@ -30,7 +30,7 @@ import { addChecklistItem, removeChecklistItem } from "../checklist-actions";
 import { ChecklistStatusSelect } from "../ChecklistStatusSelect";
 import { saveBudget } from "../budget-actions";
 import { assessComplexity } from "../complexity-actions";
-import { linkSupplierToEvent, removeEventSupplier } from "../supplier-actions";
+import { linkSupplierToEvent, removeEventSupplier, updateEventSupplierValues } from "../supplier-actions";
 import { EventSupplierSituacaoSelect } from "../EventSupplierSituacaoSelect";
 import { addTeamMember, removeTeamMember } from "../team-actions";
 import { TeamMemberStatusSelect } from "../TeamMemberStatusSelect";
@@ -363,38 +363,56 @@ export default async function EventDetailPage({
                   {eventSuppliers.map((link) => {
                     const supplier = supplierById.get(link.supplierId);
                     return (
-                      <li key={link.id} className="px-5 py-3 flex items-center justify-between gap-3 flex-wrap text-sm">
-                        <div>
-                          <p className="font-medium text-[var(--foreground)]">{supplier?.nome ?? "Fornecedor"}</p>
-                          <p className="text-xs text-fg-muted">
-                            {link.servico}
-                            {link.responsavelInternoId ? ` · Responsável: ${userById.get(link.responsavelInternoId)?.nome ?? ""}` : ""}
-                          </p>
-                          {canViewFinancials && (link.valorPrevisto != null || link.valorContratado != null) && (
+                      <li key={link.id} className="px-5 py-3 space-y-2 text-sm">
+                        <div className="flex items-center justify-between gap-3 flex-wrap">
+                          <div>
+                            <p className="font-medium text-[var(--foreground)]">{supplier?.nome ?? "Fornecedor"}</p>
                             <p className="text-xs text-fg-muted">
-                              {link.valorPrevisto != null && `Previsto: ${formatCurrency(link.valorPrevisto)}`}
-                              {link.valorContratado != null && ` · Contratado: ${formatCurrency(link.valorContratado)}`}
+                              {link.servico}
+                              {link.responsavelInternoId ? ` · Responsável: ${userById.get(link.responsavelInternoId)?.nome ?? ""}` : ""}
                             </p>
+                            {canViewFinancials && (link.valorPrevisto != null || link.valorContratado != null) && (
+                              <p className="text-xs text-fg-muted">
+                                {link.valorPrevisto != null && `Previsto: ${formatCurrency(link.valorPrevisto)}`}
+                                {link.valorContratado != null && ` · Contratado: ${formatCurrency(link.valorContratado)}`}
+                              </p>
+                            )}
+                          </div>
+                          {canManageSuppliers ? (
+                            <div className="flex items-center gap-2">
+                              <EventSupplierSituacaoSelect eventId={id} linkId={link.id} current={link.situacao} />
+                              <ConfirmButton
+                                size="sm"
+                                variant="ghost"
+                                title="Remover fornecedor do evento"
+                                description={`O vínculo com "${supplier?.nome ?? "este fornecedor"}" será removido deste evento. O cadastro do fornecedor no catálogo não é afetado.`}
+                                confirmLabel="Remover"
+                                aria-label={`Remover fornecedor ${supplier?.nome ?? ""} deste evento`}
+                                className="!px-2 !py-1 !text-danger-700"
+                                onConfirm={removeEventSupplier.bind(null, id, link.id)}
+                              >
+                                Remover
+                              </ConfirmButton>
+                            </div>
+                          ) : (
+                            <Badge tone="brand">{EVENT_SUPPLIER_SITUACAO_LABELS[link.situacao]}</Badge>
                           )}
                         </div>
-                        {canManageSuppliers ? (
-                          <div className="flex items-center gap-2">
-                            <EventSupplierSituacaoSelect eventId={id} linkId={link.id} current={link.situacao} />
-                            <ConfirmButton
-                              size="sm"
-                              variant="ghost"
-                              title="Remover fornecedor do evento"
-                              description={`O vínculo com "${supplier?.nome ?? "este fornecedor"}" será removido deste evento. O cadastro do fornecedor no catálogo não é afetado.`}
-                              confirmLabel="Remover"
-                              aria-label={`Remover fornecedor ${supplier?.nome ?? ""} deste evento`}
-                              className="!px-2 !py-1 !text-danger-700"
-                              onConfirm={removeEventSupplier.bind(null, id, link.id)}
-                            >
-                              Remover
-                            </ConfirmButton>
-                          </div>
-                        ) : (
-                          <Badge tone="brand">{EVENT_SUPPLIER_SITUACAO_LABELS[link.situacao]}</Badge>
+                        {canManageSuppliers && canViewFinancials && (
+                          <form
+                            action={updateEventSupplierValues.bind(null, id, link.id)}
+                            className="flex flex-wrap items-end gap-2"
+                          >
+                            <Field label="Valor previsto (R$)" htmlFor={`vp-${link.id}`}>
+                              <Input id={`vp-${link.id}`} name="valorPrevisto" type="number" min={0} step="0.01" defaultValue={link.valorPrevisto ?? ""} className="!py-1 !text-xs" />
+                            </Field>
+                            <Field label="Valor contratado (R$)" htmlFor={`vc-${link.id}`}>
+                              <Input id={`vc-${link.id}`} name="valorContratado" type="number" min={0} step="0.01" defaultValue={link.valorContratado ?? ""} className="!py-1 !text-xs" />
+                            </Field>
+                            <Button type="submit" variant="ghost" size="sm">
+                              Salvar valores
+                            </Button>
+                          </form>
                         )}
                       </li>
                     );
@@ -432,9 +450,14 @@ export default async function EventDetailPage({
                     </Select>
                   </Field>
                   {canViewFinancials && (
-                    <Field label="Valor previsto (R$)" htmlFor="f-valorPrevisto">
-                      <Input id="f-valorPrevisto" name="valorPrevisto" type="number" min={0} step="0.01" />
-                    </Field>
+                    <>
+                      <Field label="Valor previsto (R$)" htmlFor="f-valorPrevisto">
+                        <Input id="f-valorPrevisto" name="valorPrevisto" type="number" min={0} step="0.01" />
+                      </Field>
+                      <Field label="Valor contratado (R$)" htmlFor="f-valorContratado" hint="Opcional — preencha quando já houver contratação fechada">
+                        <Input id="f-valorContratado" name="valorContratado" type="number" min={0} step="0.01" />
+                      </Field>
+                    </>
                   )}
                   <div className="sm:col-span-2">
                     <Button type="submit" variant="secondary" size="sm">
@@ -460,6 +483,9 @@ export default async function EventDetailPage({
                           {member.funcao}
                           {member.escala ? ` · ${member.escala}` : ""}
                         </p>
+                        {member.responsabilidade && (
+                          <p className="text-xs text-fg-muted mt-0.5">{member.responsabilidade}</p>
+                        )}
                       </div>
                       {canManageTeam ? (
                         <div className="flex items-center gap-2">

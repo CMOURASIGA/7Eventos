@@ -700,12 +700,56 @@ export const supabaseRepository: Repository = {
         .eq("event_id", eventId)
         .order("created_at");
       if (error) throw new Error(error.message);
-      return (data ?? []).map(mapEventSupplier);
+      const rows = data ?? [];
+      // Valores previsto/contratado vivem em event_supplier_financials,
+      // com RLS própria (Gestor/Admin). O cliente de serviço ignora RLS,
+      // então a checagem de "view_financials" é replicada aqui: quem não
+      // tem a capability nunca chega a buscar/receber os valores.
+      let financialsById = new Map<string, Row>();
+      if (can(session.perfil, "view_financials") && rows.length > 0) {
+        const { data: fin, error: finError } = await db
+          .from("event_supplier_financials")
+          .select("*")
+          .in(
+            "event_supplier_id",
+            rows.map((r) => r.id),
+          );
+        if (finError) throw new Error(finError.message);
+        financialsById = new Map((fin ?? []).map((f) => [f.event_supplier_id, f]));
+      }
+      return rows.map((r) => mapEventSupplier(r, financialsById.get(r.id)));
     },
     async create(session, input) {
       assertCan(session.perfil, "manage_suppliers");
       const db = getSupabaseServiceClient();
       const companyId = requireCompany(session);
+      // RN01: evento, fornecedor e responsável interno precisam
+      // pertencer à mesma empresa da sessão. O cliente de serviço ignora
+      // RLS, então essa validação precisa acontecer aqui — a UI só
+      // oferece opções corretas, mas isso não protege uma requisição
+      // manipulada diretamente.
+      await assertEventInCompany(session, input.eventId);
+      const { data: supplierRow, error: supplierError } = await db
+        .from("suppliers")
+        .select("id, nome")
+        .eq("id", input.supplierId)
+        .eq("company_id", companyId)
+        .maybeSingle();
+      if (supplierError) throw new Error(supplierError.message);
+      if (!supplierRow) throw new Error("Fornecedor não encontrado nesta empresa.");
+      if (input.responsavelInternoId) {
+        const { data: userRow, error: userError } = await db
+          .from("profiles")
+          .select("id")
+          .eq("id", input.responsavelInternoId)
+          .eq("company_id", companyId)
+          .maybeSingle();
+        if (userError) throw new Error(userError.message);
+        if (!userRow) throw new Error("Responsável interno inválido para esta empresa.");
+      }
+      if (input.valorPrevisto != null && input.valorPrevisto < 0) throw new Error("Valor previsto não pode ser negativo.");
+      if (input.valorContratado != null && input.valorContratado < 0) throw new Error("Valor contratado não pode ser negativo.");
+
       const row = unwrap<Row>(
         await db
           .from("event_suppliers")
@@ -715,8 +759,6 @@ export const supabaseRepository: Repository = {
             supplier_id: input.supplierId,
             servico: input.servico,
             responsavel_interno_id: input.responsavelInternoId,
-            valor_previsto: input.valorPrevisto,
-            valor_contratado: input.valorContratado,
             situacao: input.situacao,
             data_inicio: input.dataInicio,
             data_fim: input.dataFim,
@@ -725,22 +767,48 @@ export const supabaseRepository: Repository = {
           .select("*")
           .single(),
       );
-      const link = mapEventSupplier(row);
-      await recordAudit(session, { acao: "criacao", entidade: "fornecedor_evento", entidadeId: link.id, descricao: `Fornecedor vinculado ao evento (${link.servico}).` });
+      let financialsRow: Row | null = null;
+      if (input.valorPrevisto != null || input.valorContratado != null) {
+        financialsRow = unwrap<Row>(
+          await db
+            .from("event_supplier_financials")
+            .insert({
+              event_supplier_id: row.id,
+              company_id: companyId,
+              valor_previsto: input.valorPrevisto,
+              valor_contratado: input.valorContratado,
+            })
+            .select("*")
+            .single(),
+        );
+      }
+      const link = mapEventSupplier(row, financialsRow);
+      await recordAudit(session, { acao: "criacao", entidade: "fornecedor_evento", entidadeId: link.id, descricao: `Fornecedor "${supplierRow.nome}" vinculado ao evento (${link.servico}).` });
       return link;
     },
     async update(session, id, input) {
       assertCan(session.perfil, "manage_suppliers");
       const db = getSupabaseServiceClient();
       const companyId = requireCompany(session);
+      if (input.responsavelInternoId) {
+        const { data: userRow, error: userError } = await db
+          .from("profiles")
+          .select("id")
+          .eq("id", input.responsavelInternoId)
+          .eq("company_id", companyId)
+          .maybeSingle();
+        if (userError) throw new Error(userError.message);
+        if (!userRow) throw new Error("Responsável interno inválido para esta empresa.");
+      }
+      if (input.valorPrevisto != null && input.valorPrevisto < 0) throw new Error("Valor previsto não pode ser negativo.");
+      if (input.valorContratado != null && input.valorContratado < 0) throw new Error("Valor contratado não pode ser negativo.");
+
       const row = unwrap<Row>(
         await db
           .from("event_suppliers")
           .update({
             servico: input.servico,
             responsavel_interno_id: input.responsavelInternoId,
-            valor_previsto: input.valorPrevisto,
-            valor_contratado: input.valorContratado,
             situacao: input.situacao,
             data_inicio: input.dataInicio,
             data_fim: input.dataFim,
@@ -751,7 +819,25 @@ export const supabaseRepository: Repository = {
           .select("*")
           .single(),
       );
-      const link = mapEventSupplier(row);
+      let financialsRow: Row | null = null;
+      if (input.valorPrevisto !== undefined || input.valorContratado !== undefined) {
+        financialsRow = unwrap<Row>(
+          await db
+            .from("event_supplier_financials")
+            .upsert(
+              {
+                event_supplier_id: id,
+                company_id: companyId,
+                valor_previsto: input.valorPrevisto,
+                valor_contratado: input.valorContratado,
+              },
+              { onConflict: "event_supplier_id" },
+            )
+            .select("*")
+            .single(),
+        );
+      }
+      const link = mapEventSupplier(row, financialsRow);
       await recordAudit(session, { acao: "edicao", entidade: "fornecedor_evento", entidadeId: link.id, descricao: "Vínculo de fornecedor atualizado." });
       return link;
     },
@@ -759,6 +845,7 @@ export const supabaseRepository: Repository = {
       assertCan(session.perfil, "manage_suppliers");
       const db = getSupabaseServiceClient();
       const companyId = requireCompany(session);
+      // event_supplier_financials cai junto via "on delete cascade".
       const { error } = await db.from("event_suppliers").delete().eq("id", id).eq("company_id", companyId);
       if (error) throw new Error(error.message);
     },
@@ -780,6 +867,25 @@ export const supabaseRepository: Repository = {
       assertCan(session.perfil, "manage_team");
       const db = getSupabaseServiceClient();
       const companyId = requireCompany(session);
+      await assertEventInCompany(session, input.eventId);
+      const { data: userRow, error: userError } = await db
+        .from("profiles")
+        .select("id, nome, status")
+        .eq("id", input.userId)
+        .eq("company_id", companyId)
+        .maybeSingle();
+      if (userError) throw new Error(userError.message);
+      if (!userRow) throw new Error("Usuário não encontrado nesta empresa.");
+      if (userRow.status !== "ativo") throw new Error("Usuário inativo não pode ser alocado à equipe.");
+      const { data: existing, error: existingError } = await db
+        .from("event_team_members")
+        .select("id")
+        .eq("event_id", input.eventId)
+        .eq("user_id", input.userId)
+        .maybeSingle();
+      if (existingError) throw new Error(existingError.message);
+      if (existing) throw new Error("Este usuário já está alocado à equipe deste evento.");
+
       const row = unwrap<Row>(
         await db
           .from("event_team_members")
@@ -796,7 +902,7 @@ export const supabaseRepository: Repository = {
           .single(),
       );
       const member = mapEventTeamMember(row);
-      await recordAudit(session, { acao: "criacao", entidade: "equipe_evento", entidadeId: member.id, descricao: `Membro adicionado à equipe do evento como ${member.funcao}.` });
+      await recordAudit(session, { acao: "criacao", entidade: "equipe_evento", entidadeId: member.id, descricao: `${userRow.nome} adicionado à equipe do evento como ${member.funcao}.` });
       return member;
     },
     async update(session, id, input) {
