@@ -6,9 +6,12 @@ import type {
   ComplexityAssessment,
   EventEntity,
   EventSession,
+  EventSupplier,
+  EventTeamMember,
   Reservation,
   Space,
   StatusHistoryEntry,
+  Supplier,
   User,
 } from "@/lib/domain/types";
 
@@ -168,6 +171,56 @@ export function mapChecklistItem(r: Row): ChecklistItem {
     status: r.status,
     observacao: r.observacao ?? undefined,
     concluidoEm: r.concluido_em ?? undefined,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export function mapSupplier(r: Row): Supplier {
+  return {
+    id: r.id,
+    companyId: r.company_id,
+    nome: r.nome,
+    documento: r.documento ?? undefined,
+    categoria: r.categoria,
+    contato: r.contato ?? undefined,
+    servicos: r.servicos ?? undefined,
+    status: r.status,
+    observacoes: r.observacoes ?? undefined,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export function mapEventSupplier(r: Row): EventSupplier {
+  return {
+    id: r.id,
+    companyId: r.company_id,
+    eventId: r.event_id,
+    supplierId: r.supplier_id,
+    servico: r.servico,
+    responsavelInternoId: r.responsavel_interno_id ?? undefined,
+    valorPrevisto: r.valor_previsto != null ? Number(r.valor_previsto) : undefined,
+    valorContratado: r.valor_contratado != null ? Number(r.valor_contratado) : undefined,
+    situacao: r.situacao,
+    dataInicio: r.data_inicio ?? undefined,
+    dataFim: r.data_fim ?? undefined,
+    observacoes: r.observacoes ?? undefined,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export function mapEventTeamMember(r: Row): EventTeamMember {
+  return {
+    id: r.id,
+    companyId: r.company_id,
+    eventId: r.event_id,
+    userId: r.user_id,
+    funcao: r.funcao,
+    responsabilidade: r.responsabilidade ?? undefined,
+    escala: r.escala ?? undefined,
+    status: r.status,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };

@@ -20,9 +20,12 @@ import {
   mapComplexity,
   mapEvent,
   mapEventSession,
+  mapEventSupplier,
+  mapEventTeamMember,
   mapReservation,
   mapSpace,
   mapStatusHistory,
+  mapSupplier,
   mapUser,
 } from "./mappers";
 
@@ -595,6 +598,235 @@ export const supabaseRepository: Repository = {
       assertCan(session.perfil, "manage_checklist");
       const db = getSupabaseServiceClient();
       await db.from("checklist_items").delete().eq("id", id).eq("company_id", requireCompany(session));
+    },
+  },
+
+  suppliers: {
+    async list(session, filters) {
+      const db = getSupabaseServiceClient();
+      let query = db.from("suppliers").select("*").eq("company_id", requireCompany(session));
+      if (filters?.nome) query = query.ilike("nome", `%${filters.nome}%`);
+      if (filters?.categoria) query = query.eq("categoria", filters.categoria);
+      if (filters?.status) query = query.eq("status", filters.status);
+      const { data, error } = await query.order("nome");
+      if (error) throw new Error(error.message);
+      return (data ?? []).map(mapSupplier);
+    },
+    async get(session, id) {
+      const db = getSupabaseServiceClient();
+      const { data, error } = await db
+        .from("suppliers")
+        .select("*")
+        .eq("id", id)
+        .eq("company_id", requireCompany(session))
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      return data ? mapSupplier(data) : null;
+    },
+    async create(session, input) {
+      assertCan(session.perfil, "manage_suppliers");
+      const db = getSupabaseServiceClient();
+      const companyId = requireCompany(session);
+      const row = unwrap<Row>(
+        await db
+          .from("suppliers")
+          .insert({
+            company_id: companyId,
+            nome: input.nome,
+            documento: input.documento,
+            categoria: input.categoria,
+            contato: input.contato,
+            servicos: input.servicos,
+            status: input.status,
+            observacoes: input.observacoes,
+          })
+          .select("*")
+          .single(),
+      );
+      const supplier = mapSupplier(row);
+      await recordAudit(session, { acao: "criacao", entidade: "fornecedor", entidadeId: supplier.id, descricao: `Fornecedor "${supplier.nome}" cadastrado.` });
+      return supplier;
+    },
+    async update(session, id, input) {
+      assertCan(session.perfil, "manage_suppliers");
+      const db = getSupabaseServiceClient();
+      const companyId = requireCompany(session);
+      const row = unwrap<Row>(
+        await db
+          .from("suppliers")
+          .update({
+            nome: input.nome,
+            documento: input.documento,
+            categoria: input.categoria,
+            contato: input.contato,
+            servicos: input.servicos,
+            status: input.status,
+            observacoes: input.observacoes,
+          })
+          .eq("id", id)
+          .eq("company_id", companyId)
+          .select("*")
+          .single(),
+      );
+      const supplier = mapSupplier(row);
+      await recordAudit(session, { acao: "edicao", entidade: "fornecedor", entidadeId: supplier.id, descricao: `Fornecedor "${supplier.nome}" editado.` });
+      return supplier;
+    },
+    async setStatus(session, id, status) {
+      assertCan(session.perfil, "manage_suppliers");
+      const db = getSupabaseServiceClient();
+      const companyId = requireCompany(session);
+      const row = unwrap<Row>(
+        await db.from("suppliers").update({ status }).eq("id", id).eq("company_id", companyId).select("*").single(),
+      );
+      const supplier = mapSupplier(row);
+      await recordAudit(session, {
+        acao: status === "inativo" ? "cancelamento" : "edicao",
+        entidade: "fornecedor",
+        entidadeId: supplier.id,
+        descricao: `Fornecedor "${supplier.nome}" marcado como ${status === "inativo" ? "inativo" : "ativo"}.`,
+      });
+      return supplier;
+    },
+  },
+
+  eventSuppliers: {
+    async listByEvent(session, eventId) {
+      const db = getSupabaseServiceClient();
+      await assertEventInCompany(session, eventId);
+      const { data, error } = await db
+        .from("event_suppliers")
+        .select("*")
+        .eq("event_id", eventId)
+        .order("created_at");
+      if (error) throw new Error(error.message);
+      return (data ?? []).map(mapEventSupplier);
+    },
+    async create(session, input) {
+      assertCan(session.perfil, "manage_suppliers");
+      const db = getSupabaseServiceClient();
+      const companyId = requireCompany(session);
+      const row = unwrap<Row>(
+        await db
+          .from("event_suppliers")
+          .insert({
+            company_id: companyId,
+            event_id: input.eventId,
+            supplier_id: input.supplierId,
+            servico: input.servico,
+            responsavel_interno_id: input.responsavelInternoId,
+            valor_previsto: input.valorPrevisto,
+            valor_contratado: input.valorContratado,
+            situacao: input.situacao,
+            data_inicio: input.dataInicio,
+            data_fim: input.dataFim,
+            observacoes: input.observacoes,
+          })
+          .select("*")
+          .single(),
+      );
+      const link = mapEventSupplier(row);
+      await recordAudit(session, { acao: "criacao", entidade: "fornecedor_evento", entidadeId: link.id, descricao: `Fornecedor vinculado ao evento (${link.servico}).` });
+      return link;
+    },
+    async update(session, id, input) {
+      assertCan(session.perfil, "manage_suppliers");
+      const db = getSupabaseServiceClient();
+      const companyId = requireCompany(session);
+      const row = unwrap<Row>(
+        await db
+          .from("event_suppliers")
+          .update({
+            servico: input.servico,
+            responsavel_interno_id: input.responsavelInternoId,
+            valor_previsto: input.valorPrevisto,
+            valor_contratado: input.valorContratado,
+            situacao: input.situacao,
+            data_inicio: input.dataInicio,
+            data_fim: input.dataFim,
+            observacoes: input.observacoes,
+          })
+          .eq("id", id)
+          .eq("company_id", companyId)
+          .select("*")
+          .single(),
+      );
+      const link = mapEventSupplier(row);
+      await recordAudit(session, { acao: "edicao", entidade: "fornecedor_evento", entidadeId: link.id, descricao: "Vínculo de fornecedor atualizado." });
+      return link;
+    },
+    async remove(session, id) {
+      assertCan(session.perfil, "manage_suppliers");
+      const db = getSupabaseServiceClient();
+      const companyId = requireCompany(session);
+      const { error } = await db.from("event_suppliers").delete().eq("id", id).eq("company_id", companyId);
+      if (error) throw new Error(error.message);
+    },
+  },
+
+  team: {
+    async listByEvent(session, eventId) {
+      const db = getSupabaseServiceClient();
+      await assertEventInCompany(session, eventId);
+      const { data, error } = await db
+        .from("event_team_members")
+        .select("*")
+        .eq("event_id", eventId)
+        .order("created_at");
+      if (error) throw new Error(error.message);
+      return (data ?? []).map(mapEventTeamMember);
+    },
+    async create(session, input) {
+      assertCan(session.perfil, "manage_team");
+      const db = getSupabaseServiceClient();
+      const companyId = requireCompany(session);
+      const row = unwrap<Row>(
+        await db
+          .from("event_team_members")
+          .insert({
+            company_id: companyId,
+            event_id: input.eventId,
+            user_id: input.userId,
+            funcao: input.funcao,
+            responsabilidade: input.responsabilidade,
+            escala: input.escala,
+            status: input.status,
+          })
+          .select("*")
+          .single(),
+      );
+      const member = mapEventTeamMember(row);
+      await recordAudit(session, { acao: "criacao", entidade: "equipe_evento", entidadeId: member.id, descricao: `Membro adicionado à equipe do evento como ${member.funcao}.` });
+      return member;
+    },
+    async update(session, id, input) {
+      assertCan(session.perfil, "manage_team");
+      const db = getSupabaseServiceClient();
+      const companyId = requireCompany(session);
+      const row = unwrap<Row>(
+        await db
+          .from("event_team_members")
+          .update({
+            funcao: input.funcao,
+            responsabilidade: input.responsabilidade,
+            escala: input.escala,
+            status: input.status,
+          })
+          .eq("id", id)
+          .eq("company_id", companyId)
+          .select("*")
+          .single(),
+      );
+      const member = mapEventTeamMember(row);
+      await recordAudit(session, { acao: "edicao", entidade: "equipe_evento", entidadeId: member.id, descricao: "Membro de equipe atualizado." });
+      return member;
+    },
+    async remove(session, id) {
+      assertCan(session.perfil, "manage_team");
+      const db = getSupabaseServiceClient();
+      const companyId = requireCompany(session);
+      const { error } = await db.from("event_team_members").delete().eq("id", id).eq("company_id", companyId);
+      if (error) throw new Error(error.message);
     },
   },
 

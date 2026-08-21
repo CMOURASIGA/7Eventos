@@ -7,6 +7,8 @@ import {
   EVENT_STATUS_LABELS,
   CHECKLIST_STATUS_LABELS,
   RESERVATION_STATUS_LABELS,
+  EVENT_SUPPLIER_SITUACAO_LABELS,
+  TEAM_MEMBER_STATUS_LABELS,
   type EventStatus,
 } from "@/lib/domain/types";
 import {
@@ -28,6 +30,10 @@ import { addChecklistItem, removeChecklistItem } from "../checklist-actions";
 import { ChecklistStatusSelect } from "../ChecklistStatusSelect";
 import { saveBudget } from "../budget-actions";
 import { assessComplexity } from "../complexity-actions";
+import { linkSupplierToEvent, removeEventSupplier } from "../supplier-actions";
+import { EventSupplierSituacaoSelect } from "../EventSupplierSituacaoSelect";
+import { addTeamMember, removeTeamMember } from "../team-actions";
+import { TeamMemberStatusSelect } from "../TeamMemberStatusSelect";
 
 const STATUS_FLOW: EventStatus[] = [
   "rascunho",
@@ -38,7 +44,7 @@ const STATUS_FLOW: EventStatus[] = [
   "concluido",
 ];
 
-const TAB_KEYS = ["visao-geral", "sessoes", "reservas", "checklist", "orcamento", "complexidade", "historico"] as const;
+const TAB_KEYS = ["visao-geral", "sessoes", "reservas", "checklist", "fornecedores", "equipe", "orcamento", "complexidade", "historico"] as const;
 type TabKey = (typeof TAB_KEYS)[number];
 
 export default async function EventDetailPage({
@@ -62,25 +68,34 @@ export default async function EventDetailPage({
   const event = await repository.events.get(session, id);
   if (!event) notFound();
 
-  const [sessions, reservations, checklist, budget, complexity, history, users, space] = await Promise.all([
-    repository.events.getSessions(session, id),
-    repository.reservations.list(session, { eventId: id }),
-    repository.checklist.listByEvent(session, id),
-    repository.budget.getByEvent(session, id),
-    repository.complexity.getLatestByEvent(session, id),
-    repository.events.getStatusHistory(session, id),
-    repository.users.list(session),
-    event.spaceId ? repository.spaces.get(session, event.spaceId) : Promise.resolve(null),
-  ]);
+  const [sessions, reservations, checklist, budget, complexity, history, users, space, eventSuppliers, teamMembers, supplierCatalog] =
+    await Promise.all([
+      repository.events.getSessions(session, id),
+      repository.reservations.list(session, { eventId: id }),
+      repository.checklist.listByEvent(session, id),
+      repository.budget.getByEvent(session, id),
+      repository.complexity.getLatestByEvent(session, id),
+      repository.events.getStatusHistory(session, id),
+      repository.users.list(session),
+      event.spaceId ? repository.spaces.get(session, event.spaceId) : Promise.resolve(null),
+      repository.eventSuppliers.listByEvent(session, id),
+      repository.team.listByEvent(session, id),
+      repository.suppliers.list(session, { status: "ativo" }),
+    ]);
   const spaceById = new Map((await repository.spaces.list(session)).map((s) => [s.id, s]));
 
   const userById = new Map(users.map((u) => [u.id, u]));
+  const supplierById = new Map(supplierCatalog.map((s) => [s.id, s]));
   const canEdit = can(session.perfil, "create_edit_event");
   const canChecklist = can(session.perfil, "manage_checklist");
   const canBudget = can(session.perfil, "manage_budget");
   const canComplexity = can(session.perfil, "assess_complexity");
   const canCancel = can(session.perfil, "cancel_delete_event");
   const canManageReservations = can(session.perfil, "manage_reservations");
+  const canManageSuppliers = can(session.perfil, "manage_suppliers");
+  const canManageTeam = can(session.perfil, "manage_team");
+  const teamMemberIds = new Set(teamMembers.map((m) => m.userId));
+  const availableUsersForTeam = users.filter((u) => !teamMemberIds.has(u.id));
   // Operador (só "create_event"): pode continuar o próprio rascunho pelo
   // assistente, mas não tem "Editar"/"Avançar status" (exclusivos do Gestor/Admin).
   const canContinueOwnDraft =
@@ -163,6 +178,8 @@ export default async function EventDetailPage({
             { key: "sessoes", label: "Sessões", count: sessions.length },
             { key: "reservas", label: "Reservas", count: reservations.length },
             { key: "checklist", label: "Checklist", count: checklist.length },
+            { key: "fornecedores", label: "Fornecedores", count: eventSuppliers.length },
+            { key: "equipe", label: "Equipe", count: teamMembers.length },
             ...(canViewFinancials ? [{ key: "orcamento", label: "Orçamento" }] : []),
             { key: "complexidade", label: "Complexidade" },
             { key: "historico", label: "Histórico", count: history.length },
@@ -330,6 +347,172 @@ export default async function EventDetailPage({
                   <div className="sm:col-span-2">
                     <Button type="submit" variant="secondary" size="sm">
                       Adicionar item
+                    </Button>
+                  </div>
+                </form>
+              )}
+            </div>
+          )}
+
+          {activeTab === "fornecedores" && (
+            <div className="space-y-4">
+              {eventSuppliers.length === 0 ? (
+                <EmptyState title="Nenhum fornecedor vinculado a este evento." />
+              ) : (
+                <ul className="divide-y divide-border-subtle -mx-5">
+                  {eventSuppliers.map((link) => {
+                    const supplier = supplierById.get(link.supplierId);
+                    return (
+                      <li key={link.id} className="px-5 py-3 flex items-center justify-between gap-3 flex-wrap text-sm">
+                        <div>
+                          <p className="font-medium text-[var(--foreground)]">{supplier?.nome ?? "Fornecedor"}</p>
+                          <p className="text-xs text-fg-muted">
+                            {link.servico}
+                            {link.responsavelInternoId ? ` · Responsável: ${userById.get(link.responsavelInternoId)?.nome ?? ""}` : ""}
+                          </p>
+                          {canViewFinancials && (link.valorPrevisto != null || link.valorContratado != null) && (
+                            <p className="text-xs text-fg-muted">
+                              {link.valorPrevisto != null && `Previsto: ${formatCurrency(link.valorPrevisto)}`}
+                              {link.valorContratado != null && ` · Contratado: ${formatCurrency(link.valorContratado)}`}
+                            </p>
+                          )}
+                        </div>
+                        {canManageSuppliers ? (
+                          <div className="flex items-center gap-2">
+                            <EventSupplierSituacaoSelect eventId={id} linkId={link.id} current={link.situacao} />
+                            <ConfirmButton
+                              size="sm"
+                              variant="ghost"
+                              title="Remover fornecedor do evento"
+                              description={`O vínculo com "${supplier?.nome ?? "este fornecedor"}" será removido deste evento. O cadastro do fornecedor no catálogo não é afetado.`}
+                              confirmLabel="Remover"
+                              aria-label={`Remover fornecedor ${supplier?.nome ?? ""} deste evento`}
+                              className="!px-2 !py-1 !text-danger-700"
+                              onConfirm={removeEventSupplier.bind(null, id, link.id)}
+                            >
+                              Remover
+                            </ConfirmButton>
+                          </div>
+                        ) : (
+                          <Badge tone="brand">{EVENT_SUPPLIER_SITUACAO_LABELS[link.situacao]}</Badge>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              {canManageSuppliers && (
+                <form
+                  action={linkSupplierToEvent.bind(null, id)}
+                  className="pt-4 border-t border-border-subtle grid sm:grid-cols-2 gap-3 items-end"
+                >
+                  <Field label="Fornecedor" htmlFor="f-supplierId">
+                    <Select id="f-supplierId" name="supplierId" required defaultValue="">
+                      <option value="" disabled>
+                        Selecione
+                      </option>
+                      {supplierCatalog.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.nome} — {s.categoria}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="Serviço" htmlFor="f-servico">
+                    <Input id="f-servico" name="servico" required placeholder="Ex: Som e iluminação do salão principal" />
+                  </Field>
+                  <Field label="Responsável interno" htmlFor="f-responsavelInternoId">
+                    <Select id="f-responsavelInternoId" name="responsavelInternoId" defaultValue="">
+                      <option value="">Nenhum</option>
+                      {users.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.nome}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  {canViewFinancials && (
+                    <Field label="Valor previsto (R$)" htmlFor="f-valorPrevisto">
+                      <Input id="f-valorPrevisto" name="valorPrevisto" type="number" min={0} step="0.01" />
+                    </Field>
+                  )}
+                  <div className="sm:col-span-2">
+                    <Button type="submit" variant="secondary" size="sm">
+                      Vincular fornecedor
+                    </Button>
+                  </div>
+                </form>
+              )}
+            </div>
+          )}
+
+          {activeTab === "equipe" && (
+            <div className="space-y-4">
+              {teamMembers.length === 0 ? (
+                <EmptyState title="Nenhum membro de equipe alocado a este evento." />
+              ) : (
+                <ul className="divide-y divide-border-subtle -mx-5">
+                  {teamMembers.map((member) => (
+                    <li key={member.id} className="px-5 py-3 flex items-center justify-between gap-3 flex-wrap text-sm">
+                      <div>
+                        <p className="font-medium text-[var(--foreground)]">{userById.get(member.userId)?.nome ?? "Usuário"}</p>
+                        <p className="text-xs text-fg-muted">
+                          {member.funcao}
+                          {member.escala ? ` · ${member.escala}` : ""}
+                        </p>
+                      </div>
+                      {canManageTeam ? (
+                        <div className="flex items-center gap-2">
+                          <TeamMemberStatusSelect eventId={id} memberId={member.id} current={member.status} />
+                          <ConfirmButton
+                            size="sm"
+                            variant="ghost"
+                            title="Remover da equipe do evento"
+                            description={`${userById.get(member.userId)?.nome ?? "Este usuário"} será removido da equipe deste evento.`}
+                            confirmLabel="Remover"
+                            aria-label={`Remover ${userById.get(member.userId)?.nome ?? ""} da equipe do evento`}
+                            className="!px-2 !py-1 !text-danger-700"
+                            onConfirm={removeTeamMember.bind(null, id, member.id)}
+                          >
+                            Remover
+                          </ConfirmButton>
+                        </div>
+                      ) : (
+                        <Badge tone={member.status === "concluido" ? "success" : "neutral"}>{TEAM_MEMBER_STATUS_LABELS[member.status]}</Badge>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {canManageTeam && (
+                <form
+                  action={addTeamMember.bind(null, id)}
+                  className="pt-4 border-t border-border-subtle grid sm:grid-cols-2 gap-3 items-end"
+                >
+                  <Field label="Usuário" htmlFor="t-userId">
+                    <Select id="t-userId" name="userId" required defaultValue="">
+                      <option value="" disabled>
+                        Selecione
+                      </option>
+                      {availableUsersForTeam.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.nome}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="Função" htmlFor="t-funcao">
+                    <Input id="t-funcao" name="funcao" required placeholder="Ex: Coordenação geral" />
+                  </Field>
+                  <Field label="Escala/horário" htmlFor="t-escala">
+                    <Input id="t-escala" name="escala" placeholder="Ex: 8h às 18h" />
+                  </Field>
+                  <Field label="Responsabilidade" htmlFor="t-responsabilidade">
+                    <Input id="t-responsabilidade" name="responsabilidade" placeholder="Opcional" />
+                  </Field>
+                  <div className="sm:col-span-2">
+                    <Button type="submit" variant="secondary" size="sm">
+                      Adicionar membro
                     </Button>
                   </div>
                 </form>

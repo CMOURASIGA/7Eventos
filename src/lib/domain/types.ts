@@ -272,3 +272,78 @@ export interface AuthSession {
   companyId: string | null;
   perfil: Role;
 }
+
+/**
+ * Fase 2 - Gestão Completa do Evento (docs/FASE_02_GESTAO.md)
+ *
+ * Fatia 1: Fornecedores + Equipe.
+ */
+
+export type SupplierStatus = "ativo" | "inativo";
+
+/** Catálogo de fornecedores da empresa (independente de evento). */
+export interface Supplier {
+  id: string;
+  companyId: string;
+  nome: string;
+  documento?: string;
+  categoria: string;
+  contato?: string;
+  servicos?: string;
+  status: SupplierStatus;
+  observacoes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type EventSupplierSituacao = "previsto" | "contratado" | "confirmado" | "concluido" | "cancelado";
+
+export const EVENT_SUPPLIER_SITUACAO_LABELS: Record<EventSupplierSituacao, string> = {
+  previsto: "Previsto",
+  contratado: "Contratado",
+  confirmado: "Confirmado",
+  concluido: "Concluído",
+  cancelado: "Cancelado",
+};
+
+/** Vínculo de um fornecedor do catálogo a um evento específico. */
+export interface EventSupplier {
+  id: string;
+  companyId: string;
+  eventId: string;
+  supplierId: string;
+  servico: string;
+  responsavelInternoId?: string;
+  valorPrevisto?: number;
+  valorContratado?: number;
+  situacao: EventSupplierSituacao;
+  dataInicio?: string;
+  dataFim?: string;
+  observacoes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type TeamMemberStatus = "convidado" | "confirmado" | "em_atividade" | "concluido" | "cancelado";
+
+export const TEAM_MEMBER_STATUS_LABELS: Record<TeamMemberStatus, string> = {
+  convidado: "Convidado",
+  confirmado: "Confirmado",
+  em_atividade: "Em atividade",
+  concluido: "Concluído",
+  cancelado: "Cancelado",
+};
+
+/** Membro da equipe operacional alocado a um evento (usuário já cadastrado na empresa). */
+export interface EventTeamMember {
+  id: string;
+  companyId: string;
+  eventId: string;
+  userId: string;
+  funcao: string;
+  responsabilidade?: string;
+  escala?: string;
+  status: TeamMemberStatus;
+  createdAt: string;
+  updatedAt: string;
+}

@@ -27,6 +27,8 @@ export type Capability =
   | "view_reports"
   | "view_financials"
   | "view_audit"
+  | "manage_suppliers"
+  | "manage_team"
   | "manage_platform"; // superadmin apenas
 
 const MATRIX: Record<Role, Capability[]> = {
@@ -45,6 +47,8 @@ const MATRIX: Record<Role, Capability[]> = {
     "view_reports",
     "view_financials",
     "view_audit",
+    "manage_suppliers",
+    "manage_team",
   ],
   gestor_eventos: [
     "manage_spaces",
@@ -57,6 +61,8 @@ const MATRIX: Record<Role, Capability[]> = {
     "assess_complexity",
     "view_reports",
     "view_financials",
+    "manage_suppliers",
+    "manage_team",
   ],
   // Pode criar eventos (sempre nascem em rascunho) e organizar reservas/
   // checklist, mas aprovação, cancelamento, edição de campos já publicados
