@@ -96,6 +96,87 @@ export interface DashboardData {
   ocupacaoEspacos: { spaceId: string; nome: string; percentual: number }[];
 }
 
+/**
+ * Relatórios avançados (Fase 2, docs/FASE_02_GESTAO.md seção 12) —
+ * agregados computados a partir de dados já existentes, sem tabela
+ * nova. `previstoRealizado` fica vazio e `valorContratado` de
+ * `fornecedores` fica undefined para quem não tem "view_financials" —
+ * o próprio repositório aplica essa checagem (mesma proteção de
+ * budget.getByEvent/budgetItems.listByEvent, fatia 4a), então a UI só
+ * precisa decidir se mostra a seção, nunca precisa confiar sozinha em
+ * esconder o dado.
+ */
+export interface PrevistoRealizadoRow {
+  eventId: string;
+  eventTitulo: string;
+  previsto: number;
+  comprometido: number;
+  realizado: number;
+}
+
+export interface SupplierPerformanceRow {
+  supplierId: string;
+  supplierNome: string;
+  categoria: string;
+  eventosVinculados: number;
+  /** undefined para quem não tem "view_financials" — nunca "0" (não confundir ausência de dado com valor zero). */
+  valorContratado?: number;
+}
+
+export interface AttendanceSummary {
+  totalConfirmados: number;
+  totalPresentes: number;
+  totalAusentes: number;
+  taxaPresencaPct: number | null;
+}
+
+export interface OccupancyRow {
+  spaceId: string;
+  spaceNome: string;
+  percentual: number;
+}
+
+export interface ScheduleComplianceSummary {
+  totalAtividades: number;
+  concluidas: number;
+  atrasadas: number;
+  taxaConclusaoPct: number | null;
+}
+
+export interface ChecklistComplianceSummary {
+  totalItens: number;
+  concluidos: number;
+  taxaConclusaoPct: number | null;
+}
+
+export interface PeriodPerformanceRow {
+  /** "YYYY-MM", derivado de events.created_at. */
+  periodo: string;
+  totalEventos: number;
+  concluidos: number;
+  cancelados: number;
+}
+
+export interface EventHistoryRow {
+  eventId: string;
+  eventTitulo: string;
+  status: EventStatus;
+  createdAt: string;
+  updatedAt: string;
+  mudancasDeStatus: number;
+}
+
+export interface AdvancedReportsData {
+  previstoRealizado: PrevistoRealizadoRow[];
+  fornecedores: SupplierPerformanceRow[];
+  presenca: AttendanceSummary;
+  ocupacao: OccupancyRow[];
+  cronograma: ScheduleComplianceSummary;
+  checklist: ChecklistComplianceSummary;
+  performancePorPeriodo: PeriodPerformanceRow[];
+  historicoEventos: EventHistoryRow[];
+}
+
 export interface Repository {
   // Empresas / usuários --------------------------------------------------
   companies: {
@@ -425,5 +506,11 @@ export interface Repository {
   // persistidas (ver NotificationItem em domain/types.ts). ------------------
   notifications: {
     list(session: AuthSession): Promise<NotificationItem[]>;
+  };
+
+  // Relatórios avançados (Fase 2) — agregados computados a cada consulta,
+  // sem tabela nova (ver AdvancedReportsData acima). ------------------------
+  reports: {
+    getAdvanced(session: AuthSession): Promise<AdvancedReportsData>;
   };
 }

@@ -6,7 +6,7 @@ import { EVENT_STATUS_LABELS } from "@/lib/domain/types";
 import { COMPLEXITY_LEVEL_LABELS } from "@/lib/domain/complexity";
 import { CATEGORIAS } from "@/lib/domain/catalog";
 import { Card, CardHeader, Field, Input, Select, EmptyState } from "@/components/ui/primitives";
-import { Button } from "@/components/ui/Button";
+import { Button, ButtonLink } from "@/components/ui/Button";
 import { formatCurrency, formatDate } from "@/lib/format";
 
 interface SearchParams {
@@ -84,13 +84,18 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
 
   return (
     <div className="space-y-6">
-      <div className="page-hero">
-        <h1 className="text-xl font-semibold text-[var(--foreground)]">Relatórios</h1>
-        <p className="text-sm text-fg-muted">
-          {canViewFinancials
-            ? "Consultas gerenciais por período, status, categoria, complexidade, espaço, demandante, estratégico e orçamento."
-            : "Consultas gerenciais por período, status, categoria, complexidade, espaço, demandante e estratégico."}
-        </p>
+      <div className="page-hero flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-[var(--foreground)]">Relatórios</h1>
+          <p className="text-sm text-fg-muted">
+            {canViewFinancials
+              ? "Consultas gerenciais por período, status, categoria, complexidade, espaço, demandante, estratégico e orçamento."
+              : "Consultas gerenciais por período, status, categoria, complexidade, espaço, demandante e estratégico."}
+          </p>
+        </div>
+        <ButtonLink href="/relatorios/avancados" variant="secondary" size="sm">
+          Relatórios avançados
+        </ButtonLink>
       </div>
 
       <Card>
