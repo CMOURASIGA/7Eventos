@@ -549,3 +549,46 @@ export interface BudgetItem {
   createdAt: string;
   updatedAt: string;
 }
+
+/**
+ * Fase 2 - Gestão Completa do Evento (docs/FASE_02_GESTAO.md)
+ *
+ * Fatia 4b: Notificações internas (seção 11). Computadas a partir dos
+ * dados já existentes (checklist, cronograma, reservas, documentos,
+ * orçamento, histórico de status) a cada consulta — nunca persistidas,
+ * então nunca ficam desatualizadas nem precisam de um processo em
+ * segundo plano para gerá-las. "Não depender de WhatsApp/e-mail nesta
+ * fase" (spec) — é um feed dentro da própria aplicação.
+ */
+
+export type NotificationType =
+  | "prazo_proximo"
+  | "tarefa_atrasada"
+  | "reserva_alterada"
+  | "documento_pendente"
+  | "orcamento_excedido"
+  | "atividade_bloqueada"
+  | "mudanca_status";
+
+export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
+  prazo_proximo: "Prazo próximo",
+  tarefa_atrasada: "Tarefa atrasada",
+  reserva_alterada: "Reserva alterada",
+  documento_pendente: "Documento pendente",
+  orcamento_excedido: "Orçamento excedido",
+  atividade_bloqueada: "Atividade bloqueada",
+  mudanca_status: "Mudança de status",
+};
+
+export type NotificationSeverity = "info" | "warning" | "danger";
+
+export interface NotificationItem {
+  id: string;
+  type: NotificationType;
+  severity: NotificationSeverity;
+  eventId: string;
+  eventTitulo: string;
+  titulo: string;
+  /** Data/hora de referência do alerta (prazo, horário da atividade, data da mudança) — a UI formata para exibição. */
+  referenceAt: string;
+}

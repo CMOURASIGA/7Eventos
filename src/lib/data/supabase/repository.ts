@@ -3,6 +3,7 @@ import type {
   ComplexityFactors,
   EventSession,
   EventStatus,
+  NotificationItem,
   Reservation,
 } from "@/lib/domain/types";
 import { EVENT_STATUS_LABELS, RESERVATION_STATUS_LABELS, ROLE_LABELS } from "@/lib/domain/types";
@@ -1705,6 +1706,234 @@ export const supabaseRepository: Repository = {
         eventosSemOrcamento,
         ocupacaoEspacos,
       };
+    },
+  },
+
+  notifications: {
+    async list(session) {
+      const companyId = requireCompany(session);
+      const db = getSupabaseServiceClient();
+      // Orçamento excedido só é computado para quem tem "view_financials"
+      // — mesma proteção de budget.getByEvent/budgetItems.listByEvent
+      // (fatia 4a): a consulta nem roda para quem não tem a capability.
+      const canFinancials = can(session.perfil, "view_financials");
+      const nowMs = Date.now();
+      const DAY_MS = 24 * 3600_000;
+      const RECENCY_MS = 7 * DAY_MS;
+      const PRAZO_CHECKLIST_MS = 3 * DAY_MS;
+      const PRAZO_SCHEDULE_MS = DAY_MS;
+
+      const { data: eventRows, error: eventsError } = await db.from("events").select("*").eq("company_id", companyId);
+      if (eventsError) throw new Error(eventsError.message);
+      const events = (eventRows ?? []).map(mapEvent);
+      const eventById = new Map(events.map((e) => [e.id, e]));
+      // Eventos cancelados/concluídos não geram alertas operacionais novos
+      // (prazo, bloqueio, documento pendente) — só histórico de mudança de
+      // status e reserva alterada olham para trás independente do status
+      // atual, já que a própria transição é o fato notável.
+      const openEventIds = new Set(
+        events.filter((e) => e.status !== "cancelado" && e.status !== "concluido").map((e) => e.id),
+      );
+
+      const items: NotificationItem[] = [];
+      let seq = 0;
+      const push = (n: Omit<NotificationItem, "id">) => items.push({ id: `notif_${seq++}`, ...n });
+
+      // Checklist: prazo próximo + tarefa atrasada + atividade bloqueada
+      const { data: checklistRows, error: checklistError } = await db
+        .from("checklist_items")
+        .select("*")
+        .eq("company_id", companyId);
+      if (checklistError) throw new Error(checklistError.message);
+      for (const row of (checklistRows ?? []).map(mapChecklistItem)) {
+        if (!openEventIds.has(row.eventId)) continue;
+        const event = eventById.get(row.eventId);
+        if (!event) continue;
+        if (row.status === "bloqueado") {
+          push({
+            type: "atividade_bloqueada",
+            severity: "danger",
+            eventId: event.id,
+            eventTitulo: event.titulo,
+            titulo: `Item de checklist bloqueado: "${row.titulo}"`,
+            referenceAt: row.updatedAt,
+          });
+        }
+        if (row.prazo && row.status !== "concluido" && row.status !== "cancelado") {
+          const prazoMs = new Date(row.prazo).getTime();
+          if (prazoMs < nowMs) {
+            push({
+              type: "tarefa_atrasada",
+              severity: "danger",
+              eventId: event.id,
+              eventTitulo: event.titulo,
+              titulo: `Item de checklist atrasado: "${row.titulo}"`,
+              referenceAt: row.prazo,
+            });
+          } else if (prazoMs - nowMs <= PRAZO_CHECKLIST_MS) {
+            push({
+              type: "prazo_proximo",
+              severity: "warning",
+              eventId: event.id,
+              eventTitulo: event.titulo,
+              titulo: `Prazo próximo no checklist: "${row.titulo}"`,
+              referenceAt: row.prazo,
+            });
+          }
+        }
+      }
+
+      // Cronograma: prazo próximo + atividade atrasada
+      const { data: scheduleRows, error: scheduleError } = await db
+        .from("schedule_items")
+        .select("*")
+        .eq("company_id", companyId);
+      if (scheduleError) throw new Error(scheduleError.message);
+      for (const row of (scheduleRows ?? []).map(mapScheduleItem)) {
+        if (!openEventIds.has(row.eventId) || row.status === "concluido" || row.status === "cancelado") continue;
+        const event = eventById.get(row.eventId);
+        if (!event) continue;
+        const fimMs = new Date(row.fim).getTime();
+        const inicioMs = new Date(row.inicio).getTime();
+        if (fimMs < nowMs) {
+          push({
+            type: "tarefa_atrasada",
+            severity: "danger",
+            eventId: event.id,
+            eventTitulo: event.titulo,
+            titulo: `Atividade do cronograma atrasada: "${row.titulo}"`,
+            referenceAt: row.fim,
+          });
+        } else if (inicioMs >= nowMs && inicioMs - nowMs <= PRAZO_SCHEDULE_MS) {
+          push({
+            type: "prazo_proximo",
+            severity: "warning",
+            eventId: event.id,
+            eventTitulo: event.titulo,
+            titulo: `Atividade próxima no cronograma: "${row.titulo}"`,
+            referenceAt: row.inicio,
+          });
+        }
+      }
+
+      // Documentos: evento aberto sem nenhum documento ativo registrado
+      const { data: documentRows, error: documentsError } = await db
+        .from("event_documents")
+        .select("event_id, status")
+        .eq("company_id", companyId)
+        .eq("status", "ativo");
+      if (documentsError) throw new Error(documentsError.message);
+      const activeDocEventIds = new Set((documentRows ?? []).map((d: { event_id: string }) => d.event_id));
+      for (const eventId of openEventIds) {
+        if (activeDocEventIds.has(eventId)) continue;
+        const event = eventById.get(eventId);
+        if (!event) continue;
+        push({
+          type: "documento_pendente",
+          severity: "info",
+          eventId: event.id,
+          eventTitulo: event.titulo,
+          titulo: "Nenhum documento registrado para este evento",
+          referenceAt: event.updatedAt,
+        });
+      }
+
+      // Reservas alteradas recentemente (updatedAt != createdAt é o único
+      // sinal de edição disponível no modelo atual — sem log de campo a
+      // campo, tratamos qualquer atualização após a criação como "alterada").
+      const { data: reservationRows, error: reservationsError } = await db
+        .from("reservations")
+        .select("*")
+        .eq("company_id", companyId);
+      if (reservationsError) throw new Error(reservationsError.message);
+      for (const row of (reservationRows ?? []).map(mapReservation)) {
+        if (!row.eventId || !openEventIds.has(row.eventId)) continue;
+        if (row.updatedAt === row.createdAt) continue;
+        if (nowMs - new Date(row.updatedAt).getTime() > RECENCY_MS) continue;
+        const event = eventById.get(row.eventId);
+        if (!event) continue;
+        push({
+          type: "reserva_alterada",
+          severity: "info",
+          eventId: event.id,
+          eventTitulo: event.titulo,
+          titulo: `Reserva alterada (status atual: ${RESERVATION_STATUS_LABELS[row.status]})`,
+          referenceAt: row.updatedAt,
+        });
+      }
+
+      // Mudança relevante de status (histórico já existente de
+      // event_status_history) — ignora a transição inicial (criação do
+      // evento, status_anterior null), que não é uma "mudança".
+      const { data: historyRows, error: historyError } = await db
+        .from("event_status_history")
+        .select("*")
+        .eq("company_id", companyId)
+        .not("status_anterior", "is", null);
+      if (historyError) throw new Error(historyError.message);
+      for (const row of (historyRows ?? []).map(mapStatusHistory)) {
+        if (row.statusAnterior === null) continue;
+        if (nowMs - new Date(row.createdAt).getTime() > RECENCY_MS) continue;
+        const event = eventById.get(row.eventId);
+        if (!event) continue;
+        push({
+          type: "mudanca_status",
+          severity: "info",
+          eventId: event.id,
+          eventTitulo: event.titulo,
+          titulo: `Status alterado de "${EVENT_STATUS_LABELS[row.statusAnterior]}" para "${EVENT_STATUS_LABELS[row.statusNovo]}"`,
+          referenceAt: row.createdAt,
+        });
+      }
+
+      // Orçamento excedido (comprometido/realizado acima do previsto) —
+      // mesmo raciocínio de Comprometido/Realizado da aba Orçamento
+      // (fatia 4a): soma só valor_contratado/valor_realizado, nunca cotado.
+      if (canFinancials) {
+        const { data: budgetRows, error: budgetsError } = await db.from("budgets").select("*").eq("company_id", companyId);
+        if (budgetsError) throw new Error(budgetsError.message);
+        const { data: budgetItemRows, error: budgetItemsError } = await db
+          .from("budget_items")
+          .select("*")
+          .eq("company_id", companyId);
+        if (budgetItemsError) throw new Error(budgetItemsError.message);
+        const budgetItemsByEvent = new Map<string, ReturnType<typeof mapBudgetItem>[]>();
+        for (const item of (budgetItemRows ?? []).map(mapBudgetItem)) {
+          if (item.status === "cancelado") continue;
+          const list = budgetItemsByEvent.get(item.eventId) ?? [];
+          list.push(item);
+          budgetItemsByEvent.set(item.eventId, list);
+        }
+        for (const row of (budgetRows ?? []).map(mapBudget)) {
+          if (!openEventIds.has(row.eventId)) continue;
+          const event = eventById.get(row.eventId);
+          if (!event) continue;
+          const activeItems = budgetItemsByEvent.get(row.eventId) ?? [];
+          const comprometido = activeItems.reduce((sum, i) => sum + (i.valorContratado ?? 0), 0);
+          const realizado = activeItems.reduce((sum, i) => sum + (i.valorRealizado ?? 0), 0);
+          if (realizado > row.valorPrevisto) {
+            push({
+              type: "orcamento_excedido",
+              severity: "danger",
+              eventId: event.id,
+              eventTitulo: event.titulo,
+              titulo: "Orçamento realizado ultrapassou o valor previsto",
+              referenceAt: row.updatedAt,
+            });
+          } else if (comprometido > row.valorPrevisto) {
+            push({
+              type: "orcamento_excedido",
+              severity: "warning",
+              eventId: event.id,
+              eventTitulo: event.titulo,
+              titulo: "Orçamento comprometido acima do valor previsto",
+              referenceAt: row.updatedAt,
+            });
+          }
+        }
+      }
+
+      return items.sort((a, b) => b.referenceAt.localeCompare(a.referenceAt));
     },
   },
 };
