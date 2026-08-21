@@ -9,6 +9,9 @@ import type {
   EventDocument,
   EventEntity,
   EventRegistration,
+  EventRisk,
+  EventRiskSeverity,
+  EventRiskStatus,
   EventSession,
   EventStatus,
   EventSupplier,
@@ -106,6 +109,7 @@ export interface SeedData {
   participants: Participant[];
   registrations: EventRegistration[];
   budgetItems: BudgetItem[];
+  eventRisks: EventRisk[];
 }
 
 export function generateSeed(): SeedData {
@@ -381,6 +385,7 @@ const STATUS_CYCLE: EventStatus[] = [
   const participants: Participant[] = [];
   const registrations: EventRegistration[] = [];
   const budgetItems: BudgetItem[] = [];
+  const eventRisks: EventRisk[] = [];
 
   const seq = {
     event: 1,
@@ -399,6 +404,7 @@ const STATUS_CYCLE: EventStatus[] = [
     participant: 1,
     registration: 1,
     budgetItem: 1,
+    risk: 1,
   };
 
   // Catálogo de fornecedores por empresa (Fase 2).
@@ -772,6 +778,40 @@ const STATUS_CYCLE: EventStatus[] = [
         previousScheduleId = id;
       }
 
+      // Riscos registrados (Fase 2 fatia 4d - Central de Operação) — nem
+      // todo evento tem risco identificado; eventos estratégicos/de alta
+      // complexidade tendem a ter mais.
+      if (rng() < (event.estrategico ? 0.7 : 0.35)) {
+        const riskTemplate: { titulo: string; descricao: string; severidade: EventRiskSeverity }[] = [
+          { titulo: "Atraso na confirmação do espaço", descricao: "Espaço ainda não formalizou a reserva por escrito.", severidade: "media" },
+          { titulo: "Fornecedor crítico sem contrato assinado", descricao: "Serviço essencial (som/estrutura) sem contrato formalizado até a data limite.", severidade: "alta" },
+          { titulo: "Previsão de chuva no dia do evento", descricao: "Evento com atividades ao ar livre — sem plano B coberto definido.", severidade: "media" },
+          { titulo: "Baixa adesão de inscrições", descricao: "Ritmo de inscrições abaixo do esperado para a capacidade planejada.", severidade: "baixa" },
+          { titulo: "Orçamento próximo do limite", descricao: "Valor comprometido já próximo do previsto, com itens ainda por contratar.", severidade: "alta" },
+          { titulo: "Autoridade convidada com agenda não confirmada", descricao: "Presença de autoridade ainda depende de confirmação da assessoria.", severidade: "critica" },
+        ];
+        const risksForEvent = pickMany(riskTemplate, intBetween(1, 2));
+        for (const risk of risksForEvent) {
+          const riskStatus: EventRiskStatus =
+            finalStatus === "cancelado" || finalStatus === "concluido"
+              ? pick(["mitigado", "encerrado"] as const)
+              : pick(["aberto", "em_mitigacao", "mitigado"] as const);
+          eventRisks.push({
+            id: uid("risk", seq.risk++),
+            companyId: cfg.companyId,
+            eventId,
+            titulo: risk.titulo,
+            descricao: risk.descricao,
+            severidade: risk.severidade,
+            status: riskStatus,
+            responsavelId: pick([...cfg.managers, responsavel]),
+            planoMitigacao: riskStatus === "mitigado" || riskStatus === "em_mitigacao" ? "Acompanhamento semanal com o responsável até a resolução." : undefined,
+            createdAt: event.createdAt,
+            updatedAt: event.updatedAt,
+          });
+        }
+      }
+
       // Documentos do evento (Fase 2) — metadados + referência (sem storage
       // binário real provisionado ainda, ver domain/types.ts EventDocument).
       const documentTemplate: { categoria: EventDocumentCategory; titulo: string }[] = [
@@ -945,5 +985,6 @@ const STATUS_CYCLE: EventStatus[] = [
     participants,
     registrations,
     budgetItems,
+    eventRisks,
   };
 }

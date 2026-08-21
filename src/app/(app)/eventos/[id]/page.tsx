@@ -14,6 +14,9 @@ import {
   EVENT_DOCUMENT_CATEGORY_LABELS,
   REGISTRATION_STATUS_LABELS,
   BUDGET_ITEM_STATUS_LABELS,
+  EVENT_RISK_SEVERITY_LABELS,
+  EVENT_RISK_STATUS_LABELS,
+  NOTIFICATION_TYPE_LABELS,
   type EventStatus,
   type ScheduleItem,
 } from "@/lib/domain/types";
@@ -48,6 +51,8 @@ import { addRegistration, checkInRegistration, undoCheckInRegistration, removeRe
 import { RegistrationStatusSelect } from "../RegistrationStatusSelect";
 import { addBudgetItem, updateBudgetItemValues, removeBudgetItem } from "../budget-item-actions";
 import { BudgetItemStatusSelect } from "../BudgetItemStatusSelect";
+import { addRisk, removeRisk } from "../risk-actions";
+import { RiskStatusSelect } from "../RiskStatusSelect";
 
 const STATUS_FLOW: EventStatus[] = [
   "rascunho",
@@ -60,6 +65,7 @@ const STATUS_FLOW: EventStatus[] = [
 
 const TAB_KEYS = [
   "visao-geral",
+  "operacao",
   "sessoes",
   "reservas",
   "checklist",
@@ -129,6 +135,8 @@ export default async function EventDetailPage({
     registrations,
     participantCatalog,
     budgetItems,
+    risks,
+    notifications,
   ] = await Promise.all([
     repository.events.getSessions(session, id),
     repository.reservations.list(session, { eventId: id }),
@@ -150,6 +158,12 @@ export default async function EventDetailPage({
     repository.registrations.listByEvent(session, id),
     repository.participants.list(session, { status: "ativo" }),
     canViewFinancials ? repository.budgetItems.listByEvent(session, id) : Promise.resolve([]),
+    repository.risks.listByEvent(session, id),
+    // Pendências da Central de Operação (seção 10) reaproveitam o mesmo
+    // feed computado das Notificações internas (seção 11), filtrado por
+    // este evento — mesma origem de dados, sem duplicar a lógica de
+    // "o que está em aberto" em dois lugares.
+    repository.notifications.list(session),
   ]);
   const spaceById = new Map((await repository.spaces.list(session)).map((s) => [s.id, s]));
 
@@ -166,6 +180,9 @@ export default async function EventDetailPage({
   const canManageSchedule = can(session.perfil, "manage_schedule");
   const canManageDocuments = can(session.perfil, "manage_documents");
   const canManageRegistrations = can(session.perfil, "manage_registrations");
+  const canManageRisks = can(session.perfil, "manage_risks");
+  const eventNotifications = notifications.filter((n) => n.eventId === id);
+  const openRisks = risks.filter((r) => r.status === "aberto" || r.status === "em_mitigacao");
   const teamMemberIds = new Set(teamMembers.map((m) => m.userId));
   const availableUsersForTeam = users.filter((u) => !teamMemberIds.has(u.id));
   // Operador (só "create_event"): pode continuar o próprio rascunho pelo
@@ -250,6 +267,13 @@ export default async function EventDetailPage({
 
   const nextStatus = STATUS_FLOW[STATUS_FLOW.indexOf(event.status) + 1];
 
+  // Central de Operação (docs/FASE_02_GESTAO.md seção 10) — "data/hora"
+  // do bloco vem das sessões do evento (não há campo próprio em
+  // EventEntity), já que um evento pode ter múltiplas sessões.
+  const sortedSessions = sessions.slice().sort((a, b) => a.inicio.localeCompare(b.inicio));
+  const primeiraSessao = sortedSessions[0];
+  const ultimaSessao = sortedSessions[sortedSessions.length - 1];
+
   return (
     <div className="space-y-5 max-w-5xl">
       <PageHeader
@@ -316,6 +340,7 @@ export default async function EventDetailPage({
           active={activeTab}
           items={[
             { key: "visao-geral", label: "Visão geral" },
+            { key: "operacao", label: "Central de Operação", count: eventNotifications.length + openRisks.length || undefined },
             { key: "sessoes", label: "Sessões", count: sessions.length },
             { key: "reservas", label: "Reservas", count: reservations.length },
             { key: "checklist", label: "Checklist", count: checklist.length },
@@ -361,6 +386,210 @@ export default async function EventDetailPage({
                   <p className="text-sm text-[var(--foreground)]">{event.jornadaParticipante}</p>
                 </div>
               )}
+            </div>
+          )}
+
+          {activeTab === "operacao" && (
+            <div className="space-y-6">
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <StatCard title="Status geral">
+                  <span className="flex items-center gap-1.5 flex-wrap">
+                    <Badge tone="brand">{EVENT_STATUS_LABELS[event.status]}</Badge>
+                    {event.estrategico && <Badge tone="warning">Estratégico</Badge>}
+                  </span>
+                </StatCard>
+                <StatCard title="Data/hora">
+                  {primeiraSessao
+                    ? sortedSessions.length > 1
+                      ? `${formatDateTime(primeiraSessao.inicio)} até ${formatDateTime(ultimaSessao.fim)} (${sortedSessions.length} sessões)`
+                      : `${formatDateTime(primeiraSessao.inicio)} até ${formatDateTime(primeiraSessao.fim)}`
+                    : "Sem sessão cadastrada"}
+                </StatCard>
+                <StatCard title="Local" href={`/eventos/${id}?tab=visao-geral`}>
+                  {event.tipoLocalizacao === "interno" ? "Interno" : "Externo"} · {space?.nome ?? event.local ?? "—"}
+                </StatCard>
+                <StatCard title="Complexidade" href={`/eventos/${id}?tab=complexidade`}>
+                  {complexity ? `${COMPLEXITY_LEVEL_LABELS[complexity.nivel]} (${complexity.pontuacao} pts)` : "Não avaliada"}
+                </StatCard>
+                <StatCard title="Cronograma" href={`/eventos/${id}?tab=cronograma`}>
+                  {scheduleItems.length} atividade(s) · {overdueSchedule.length} atrasada(s)
+                </StatCard>
+                <StatCard title="Checklist" href={`/eventos/${id}?tab=checklist`}>
+                  {doneCount}/{checklist.length} concluído(s) · {checklistPct}%
+                </StatCard>
+                <StatCard title="Equipe" href={`/eventos/${id}?tab=equipe`}>
+                  {teamMembers.length} membro(s)
+                </StatCard>
+                <StatCard title="Fornecedores" href={`/eventos/${id}?tab=fornecedores`}>
+                  {eventSuppliers.length} vinculado(s)
+                </StatCard>
+                <StatCard title="Reservas" href={`/eventos/${id}?tab=reservas`}>
+                  {reservations.length} reserva(s)
+                </StatCard>
+                <StatCard title="Participantes" href={`/eventos/${id}?tab=participantes`}>
+                  {registrations.length} inscrito(s) · {confirmedRegistrations.length} confirmado(s)
+                </StatCard>
+                <StatCard title="Credenciamento" href={`/eventos/${id}?tab=participantes`}>
+                  {presentesCount} presente(s) · {ausentesCount} ausente(s)
+                </StatCard>
+                <StatCard title="Documentos" href={`/eventos/${id}?tab=documentos`}>
+                  {visibleDocuments.length} ativo(s)
+                  {archivedDocumentsCount > 0 ? ` · ${archivedDocumentsCount} arquivado(s)` : ""}
+                </StatCard>
+                {canViewFinancials && (
+                  <StatCard title="Financeiro" href={`/eventos/${id}?tab=orcamento`}>
+                    {orcamentoTotal > 0
+                      ? `${formatCurrency(orcamentoTotal)} previsto · ${percentualExecutado != null ? `${percentualExecutado.toFixed(0)}% executado` : "sem execução"}`
+                      : "Sem orçamento previsto"}
+                  </StatCard>
+                )}
+              </div>
+
+              <div>
+                <p className="text-sm font-medium text-[var(--foreground)] mb-2">Pendências</p>
+                {eventNotifications.length === 0 ? (
+                  <EmptyState title="Nenhuma pendência identificada para este evento." />
+                ) : (
+                  <ul className="divide-y divide-border-subtle -mx-5">
+                    {eventNotifications.map((n) => (
+                      <li key={n.id} className="px-5 py-2.5 flex items-center justify-between gap-3 flex-wrap text-sm">
+                        <span className="flex items-center gap-2 flex-wrap">
+                          <Badge tone={n.severity === "danger" ? "danger" : n.severity === "warning" ? "warning" : "neutral"}>
+                            {NOTIFICATION_TYPE_LABELS[n.type]}
+                          </Badge>
+                          {n.titulo}
+                        </span>
+                        <span className="text-xs text-fg-muted">{formatDateTime(n.referenceAt)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div>
+                <p className="text-sm font-medium text-[var(--foreground)] mb-2">Riscos registrados</p>
+                {risks.length === 0 ? (
+                  <EmptyState title="Nenhum risco registrado para este evento." />
+                ) : (
+                  <ul className="divide-y divide-border-subtle -mx-5">
+                    {risks.map((r) => (
+                      <li key={r.id} className="px-5 py-3 flex items-center justify-between gap-3 flex-wrap text-sm">
+                        <div>
+                          <p className="font-medium text-[var(--foreground)] flex items-center gap-2 flex-wrap">
+                            {r.titulo}
+                            <Badge
+                              tone={
+                                r.severidade === "critica" || r.severidade === "alta"
+                                  ? "danger"
+                                  : r.severidade === "media"
+                                    ? "warning"
+                                    : "neutral"
+                              }
+                            >
+                              {EVENT_RISK_SEVERITY_LABELS[r.severidade]}
+                            </Badge>
+                          </p>
+                          {r.descricao && <p className="text-xs text-fg-muted mt-0.5">{r.descricao}</p>}
+                          {r.responsavelId && (
+                            <p className="text-xs text-fg-muted mt-0.5">Responsável: {userById.get(r.responsavelId)?.nome ?? "—"}</p>
+                          )}
+                          {r.planoMitigacao && <p className="text-xs text-fg-muted mt-0.5">Plano de mitigação: {r.planoMitigacao}</p>}
+                        </div>
+                        {canManageRisks ? (
+                          <div className="flex items-center gap-2">
+                            <RiskStatusSelect eventId={id} riskId={r.id} current={r.status} />
+                            <ConfirmButton
+                              size="sm"
+                              variant="ghost"
+                              title="Remover risco"
+                              description={`O risco "${r.titulo}" será removido permanentemente deste evento.`}
+                              confirmLabel="Remover"
+                              aria-label={`Remover risco ${r.titulo}`}
+                              className="!px-2 !py-1 !text-danger-700"
+                              onConfirm={removeRisk.bind(null, id, r.id)}
+                            >
+                              Remover
+                            </ConfirmButton>
+                          </div>
+                        ) : (
+                          <Badge tone={r.status === "encerrado" || r.status === "mitigado" ? "success" : "neutral"}>
+                            {EVENT_RISK_STATUS_LABELS[r.status]}
+                          </Badge>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {canManageRisks && (
+                  <form
+                    action={addRisk.bind(null, id)}
+                    className="pt-4 border-t border-border-subtle grid sm:grid-cols-2 gap-3 items-end"
+                  >
+                    <Field label="Título" htmlFor="rk-titulo">
+                      <Input id="rk-titulo" name="titulo" required placeholder="Ex: Fornecedor sem contrato assinado" />
+                    </Field>
+                    <Field label="Severidade" htmlFor="rk-severidade">
+                      <Select id="rk-severidade" name="severidade" defaultValue="media">
+                        {Object.entries(EVENT_RISK_SEVERITY_LABELS).map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field label="Responsável" htmlFor="rk-responsavelId">
+                      <Select id="rk-responsavelId" name="responsavelId" defaultValue="">
+                        <option value="">Nenhum</option>
+                        {users.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.nome}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <div className="sm:col-span-2">
+                      <Field label="Descrição" htmlFor="rk-descricao">
+                        <Textarea id="rk-descricao" name="descricao" placeholder="Opcional" rows={2} />
+                      </Field>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <Field label="Plano de mitigação" htmlFor="rk-planoMitigacao">
+                        <Textarea id="rk-planoMitigacao" name="planoMitigacao" placeholder="Opcional" rows={2} />
+                      </Field>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <Button type="submit" variant="secondary" size="sm">
+                        Registrar risco
+                      </Button>
+                    </div>
+                  </form>
+                )}
+              </div>
+
+              <div>
+                <p className="text-sm font-medium text-[var(--foreground)] mb-2">Histórico recente</p>
+                {history.length === 0 ? (
+                  <EmptyState title="Sem histórico registrado." />
+                ) : (
+                  <ul className="divide-y divide-border-subtle -mx-5">
+                    {history.slice(0, 5).map((h) => (
+                      <li key={h.id} className="px-5 py-2.5 flex items-center justify-between text-sm">
+                        <span>
+                          {h.statusAnterior ? `${EVENT_STATUS_LABELS[h.statusAnterior]} → ` : "Criado como "}
+                          <strong>{EVENT_STATUS_LABELS[h.statusNovo]}</strong>
+                        </span>
+                        <span className="text-xs text-fg-muted">{formatDateTime(h.createdAt)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {history.length > 5 && (
+                  <Link href={`/eventos/${id}?tab=historico`} className="text-sm text-brand-700 font-medium hover:underline">
+                    Ver histórico completo
+                  </Link>
+                )}
+              </div>
             </div>
           )}
 
@@ -1369,6 +1598,22 @@ export default async function EventDetailPage({
         </div>
       </Card>
     </div>
+  );
+}
+
+/** Bloco compacto da Central de Operação — resume um bloco do evento, com link opcional para a aba correspondente. */
+function StatCard({ title, href, children }: { title: string; href?: string; children: React.ReactNode }) {
+  const content = (
+    <div className="rounded-[var(--radius-sm)] border border-border-subtle bg-surface-muted p-3.5 h-full">
+      <p className="text-xs text-fg-muted uppercase tracking-wide mb-1">{title}</p>
+      <div className="text-sm text-[var(--foreground)]">{children}</div>
+    </div>
+  );
+  if (!href) return content;
+  return (
+    <Link href={href} className="block hover:opacity-80 transition-opacity">
+      {content}
+    </Link>
   );
 }
 

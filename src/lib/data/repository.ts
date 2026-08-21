@@ -11,6 +11,7 @@ import type {
   EventDocument,
   EventEntity,
   EventRegistration,
+  EventRisk,
   EventSession,
   EventStatus,
   EventSupplier,
@@ -483,6 +484,23 @@ export interface Repository {
       eventId: string,
       factors: ComplexityFactors,
     ): Promise<ComplexityAssessment>;
+  };
+
+  // Riscos registrados (Fase 2 - Central de Operação) — registrados
+  // manualmente por quem planeja o evento, diferente das notificações
+  // computadas abaixo (ver EventRisk em domain/types.ts). -------------------
+  risks: {
+    listByEvent(session: AuthSession, eventId: string): Promise<EventRisk[]>;
+    create(
+      session: AuthSession,
+      input: Omit<EventRisk, "id" | "companyId" | "createdAt" | "updatedAt">,
+    ): Promise<EventRisk>;
+    update(
+      session: AuthSession,
+      id: string,
+      input: Partial<Omit<EventRisk, "id" | "companyId" | "eventId">>,
+    ): Promise<EventRisk>;
+    remove(session: AuthSession, id: string): Promise<void>;
   };
 
   // Auditoria ------------------------------------------------------------

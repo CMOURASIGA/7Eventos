@@ -36,6 +36,7 @@ import {
   mapEventSession,
   mapEventDocument,
   mapEventRegistration,
+  mapEventRisk,
   mapEventSupplier,
   mapEventTeamMember,
   mapParticipant,
@@ -1607,6 +1608,96 @@ export const supabaseRepository: Repository = {
       const assessment = mapComplexity(row);
       await recordAudit(session, { acao: "edicao", entidade: "complexidade", entidadeId: assessment.id, descricao: `Complexidade recalculada: ${COMPLEXITY_LEVEL_LABELS[assessment.nivel]} (pontuação ${assessment.pontuacao}).` });
       return assessment;
+    },
+  },
+
+  risks: {
+    async listByEvent(session, eventId) {
+      const db = getSupabaseServiceClient();
+      await assertEventInCompany(session, eventId);
+      const { data, error } = await db
+        .from("event_risks")
+        .select("*")
+        .eq("event_id", eventId)
+        .order("created_at", { ascending: false });
+      if (error) throw new Error(error.message);
+      return (data ?? []).map(mapEventRisk);
+    },
+    async create(session, input) {
+      assertCan(session.perfil, "manage_risks");
+      const db = getSupabaseServiceClient();
+      const companyId = requireCompany(session);
+      await assertEventInCompany(session, input.eventId);
+      if (input.responsavelId) {
+        const { data: userRow, error: userError } = await db
+          .from("profiles")
+          .select("id")
+          .eq("id", input.responsavelId)
+          .eq("company_id", companyId)
+          .maybeSingle();
+        if (userError) throw new Error(userError.message);
+        if (!userRow) throw new Error("Responsável inválido para esta empresa.");
+      }
+      const row = unwrap<Row>(
+        await db
+          .from("event_risks")
+          .insert({
+            company_id: companyId,
+            event_id: input.eventId,
+            titulo: input.titulo,
+            descricao: input.descricao,
+            severidade: input.severidade,
+            status: input.status,
+            responsavel_id: input.responsavelId,
+            plano_mitigacao: input.planoMitigacao,
+          })
+          .select("*")
+          .single(),
+      );
+      const risk = mapEventRisk(row);
+      await recordAudit(session, { acao: "criacao", entidade: "risco", entidadeId: risk.id, descricao: `Risco "${risk.titulo}" registrado.` });
+      return risk;
+    },
+    async update(session, id, input) {
+      assertCan(session.perfil, "manage_risks");
+      const db = getSupabaseServiceClient();
+      const companyId = requireCompany(session);
+      if (input.responsavelId) {
+        const { data: userRow, error: userError } = await db
+          .from("profiles")
+          .select("id")
+          .eq("id", input.responsavelId)
+          .eq("company_id", companyId)
+          .maybeSingle();
+        if (userError) throw new Error(userError.message);
+        if (!userRow) throw new Error("Responsável inválido para esta empresa.");
+      }
+      const row = unwrap<Row>(
+        await db
+          .from("event_risks")
+          .update({
+            titulo: input.titulo,
+            descricao: input.descricao,
+            severidade: input.severidade,
+            status: input.status,
+            responsavel_id: input.responsavelId,
+            plano_mitigacao: input.planoMitigacao,
+          })
+          .eq("id", id)
+          .eq("company_id", companyId)
+          .select("*")
+          .single(),
+      );
+      const risk = mapEventRisk(row);
+      await recordAudit(session, { acao: "edicao", entidade: "risco", entidadeId: risk.id, descricao: `Risco "${risk.titulo}" atualizado.` });
+      return risk;
+    },
+    async remove(session, id) {
+      assertCan(session.perfil, "manage_risks");
+      const db = getSupabaseServiceClient();
+      const companyId = requireCompany(session);
+      const { error } = await db.from("event_risks").delete().eq("id", id).eq("company_id", companyId);
+      if (error) throw new Error(error.message);
     },
   },
 

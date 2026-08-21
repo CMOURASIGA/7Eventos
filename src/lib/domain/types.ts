@@ -592,3 +592,43 @@ export interface NotificationItem {
   /** Data/hora de referência do alerta (prazo, horário da atividade, data da mudança) — a UI formata para exibição. */
   referenceAt: string;
 }
+
+/**
+ * Riscos registrados (docs/FASE_02_GESTAO.md seção 10 - Central de
+ * Operação). Diferente das notificações computadas (seção 11), um risco
+ * é registrado manualmente por quem planeja o evento — não é derivado
+ * de outra tabela. Lista estruturada com severidade + status, conforme
+ * decisão de produto (não um campo de texto livre único por evento).
+ */
+
+export type EventRiskSeverity = "baixa" | "media" | "alta" | "critica";
+
+export const EVENT_RISK_SEVERITY_LABELS: Record<EventRiskSeverity, string> = {
+  baixa: "Baixa",
+  media: "Média",
+  alta: "Alta",
+  critica: "Crítica",
+};
+
+export type EventRiskStatus = "aberto" | "em_mitigacao" | "mitigado" | "encerrado";
+
+export const EVENT_RISK_STATUS_LABELS: Record<EventRiskStatus, string> = {
+  aberto: "Aberto",
+  em_mitigacao: "Em mitigação",
+  mitigado: "Mitigado",
+  encerrado: "Encerrado",
+};
+
+export interface EventRisk {
+  id: string;
+  companyId: string;
+  eventId: string;
+  titulo: string;
+  descricao?: string;
+  severidade: EventRiskSeverity;
+  status: EventRiskStatus;
+  responsavelId?: string;
+  planoMitigacao?: string;
+  createdAt: string;
+  updatedAt: string;
+}
