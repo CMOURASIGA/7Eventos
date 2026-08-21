@@ -15,6 +15,7 @@ import type {
   EventStatus,
   EventSupplier,
   EventTeamMember,
+  NotificationItem,
   Participant,
   ParticipantStatus,
   Reservation,
@@ -418,5 +419,11 @@ export interface Repository {
   // Dashboard / relatórios --------------------------------------------------
   dashboard: {
     get(session: AuthSession, period?: DashboardPeriod): Promise<DashboardData>;
+  };
+
+  // Notificações internas (Fase 2) — computadas a cada consulta, nunca
+  // persistidas (ver NotificationItem em domain/types.ts). ------------------
+  notifications: {
+    list(session: AuthSession): Promise<NotificationItem[]>;
   };
 }

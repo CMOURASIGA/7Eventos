@@ -132,4 +132,10 @@ export const ICONS: Record<string, (props?: SVGProps<SVGSVGElement>) => React.JS
       <path d="M8 18c.7-2 2.2-3 4-3s3.3 1 4 3" />
     </svg>
   ),
+  bell: (p) => (
+    <svg {...common} {...p}>
+      <path d="M6 17v-5.5a6 6 0 0 1 12 0V17l2 2.5H4Z" />
+      <path d="M9.5 21a2.5 2.5 0 0 0 5 0" />
+    </svg>
+  ),
 };

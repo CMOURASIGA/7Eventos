@@ -10,6 +10,7 @@ import type {
   EventSession,
   EventSupplier,
   EventTeamMember,
+  NotificationItem,
   Participant,
   Reservation,
   ScheduleItem,
@@ -1154,6 +1155,201 @@ export const mockRepository: Repository = {
         eventosSemOrcamento,
         ocupacaoEspacos,
       };
+    },
+  },
+
+  notifications: {
+    async list(session) {
+      const store = getStore();
+      const companyId = requireCompany(session);
+      // Orçamento excedido só é computado para quem tem "view_financials"
+      // — mesma proteção de budget.getByEvent/budgetItems.listByEvent
+      // (fatia 4a): a consulta nem roda para quem não tem a capability.
+      const canFinancials = can(session.perfil, "view_financials");
+      const nowMs = Date.now();
+      const DAY_MS = 24 * 3600_000;
+      const RECENCY_MS = 7 * DAY_MS;
+      const PRAZO_CHECKLIST_MS = 3 * DAY_MS;
+      const PRAZO_SCHEDULE_MS = DAY_MS;
+
+      const events = store.events.filter((e) => e.companyId === companyId);
+      const eventById = new Map(events.map((e) => [e.id, e]));
+      // Eventos cancelados/concluídos não geram alertas operacionais novos
+      // (prazo, bloqueio, documento pendente) — só histórico de mudança de
+      // status e reserva alterada olham para trás independente do status
+      // atual, já que a própria transição é o fato notável.
+      const openEventIds = new Set(
+        events.filter((e) => e.status !== "cancelado" && e.status !== "concluido").map((e) => e.id),
+      );
+
+      const items: NotificationItem[] = [];
+      let seq = 0;
+      const push = (n: Omit<NotificationItem, "id">) => items.push({ id: `notif_${seq++}`, ...n });
+
+      // Checklist: prazo próximo + tarefa atrasada
+      for (const c of store.checklistItems) {
+        if (c.companyId !== companyId || !c.prazo || !openEventIds.has(c.eventId)) continue;
+        if (c.status === "concluido" || c.status === "cancelado") continue;
+        const event = eventById.get(c.eventId);
+        if (!event) continue;
+        const prazoMs = new Date(c.prazo).getTime();
+        if (prazoMs < nowMs) {
+          push({
+            type: "tarefa_atrasada",
+            severity: "danger",
+            eventId: event.id,
+            eventTitulo: event.titulo,
+            titulo: `Item de checklist atrasado: "${c.titulo}"`,
+            referenceAt: c.prazo,
+          });
+        } else if (prazoMs - nowMs <= PRAZO_CHECKLIST_MS) {
+          push({
+            type: "prazo_proximo",
+            severity: "warning",
+            eventId: event.id,
+            eventTitulo: event.titulo,
+            titulo: `Prazo próximo no checklist: "${c.titulo}"`,
+            referenceAt: c.prazo,
+          });
+        }
+      }
+
+      // Checklist: atividade bloqueada
+      for (const c of store.checklistItems) {
+        if (c.companyId !== companyId || c.status !== "bloqueado" || !openEventIds.has(c.eventId)) continue;
+        const event = eventById.get(c.eventId);
+        if (!event) continue;
+        push({
+          type: "atividade_bloqueada",
+          severity: "danger",
+          eventId: event.id,
+          eventTitulo: event.titulo,
+          titulo: `Item de checklist bloqueado: "${c.titulo}"`,
+          referenceAt: c.updatedAt,
+        });
+      }
+
+      // Cronograma: prazo próximo + atividade atrasada
+      for (const s of store.scheduleItems) {
+        if (s.companyId !== companyId || !openEventIds.has(s.eventId)) continue;
+        if (s.status === "concluido" || s.status === "cancelado") continue;
+        const event = eventById.get(s.eventId);
+        if (!event) continue;
+        const fimMs = new Date(s.fim).getTime();
+        const inicioMs = new Date(s.inicio).getTime();
+        if (fimMs < nowMs) {
+          push({
+            type: "tarefa_atrasada",
+            severity: "danger",
+            eventId: event.id,
+            eventTitulo: event.titulo,
+            titulo: `Atividade do cronograma atrasada: "${s.titulo}"`,
+            referenceAt: s.fim,
+          });
+        } else if (inicioMs >= nowMs && inicioMs - nowMs <= PRAZO_SCHEDULE_MS) {
+          push({
+            type: "prazo_proximo",
+            severity: "warning",
+            eventId: event.id,
+            eventTitulo: event.titulo,
+            titulo: `Atividade próxima no cronograma: "${s.titulo}"`,
+            referenceAt: s.inicio,
+          });
+        }
+      }
+
+      // Documentos: evento aberto sem nenhum documento ativo registrado
+      const activeDocEventIds = new Set(
+        store.documents.filter((d) => d.companyId === companyId && d.status === "ativo").map((d) => d.eventId),
+      );
+      for (const eventId of openEventIds) {
+        if (activeDocEventIds.has(eventId)) continue;
+        const event = eventById.get(eventId);
+        if (!event) continue;
+        push({
+          type: "documento_pendente",
+          severity: "info",
+          eventId: event.id,
+          eventTitulo: event.titulo,
+          titulo: "Nenhum documento registrado para este evento",
+          referenceAt: event.updatedAt,
+        });
+      }
+
+      // Reservas alteradas recentemente (updatedAt != createdAt é o único
+      // sinal de edição disponível no modelo atual — sem log de campo a
+      // campo, tratamos qualquer atualização após a criação como "alterada").
+      for (const r of store.reservations) {
+        if (r.companyId !== companyId || !r.eventId || !openEventIds.has(r.eventId)) continue;
+        if (r.updatedAt === r.createdAt) continue;
+        if (nowMs - new Date(r.updatedAt).getTime() > RECENCY_MS) continue;
+        const event = eventById.get(r.eventId);
+        if (!event) continue;
+        push({
+          type: "reserva_alterada",
+          severity: "info",
+          eventId: event.id,
+          eventTitulo: event.titulo,
+          titulo: `Reserva alterada (status atual: ${RESERVATION_STATUS_LABELS[r.status]})`,
+          referenceAt: r.updatedAt,
+        });
+      }
+
+      // Mudança relevante de status (histórico já existente de
+      // event_status_history) — ignora a transição inicial (criação do
+      // evento, statusAnterior null), que não é uma "mudança".
+      for (const h of store.statusHistory) {
+        if (h.companyId !== companyId || h.statusAnterior === null) continue;
+        if (nowMs - new Date(h.createdAt).getTime() > RECENCY_MS) continue;
+        const event = eventById.get(h.eventId);
+        if (!event) continue;
+        push({
+          type: "mudanca_status",
+          severity: "info",
+          eventId: event.id,
+          eventTitulo: event.titulo,
+          titulo: `Status alterado de "${EVENT_STATUS_LABELS[h.statusAnterior]}" para "${EVENT_STATUS_LABELS[h.statusNovo]}"`,
+          referenceAt: h.createdAt,
+        });
+      }
+
+      // Orçamento excedido (comprometido/realizado acima do previsto) —
+      // mesmo raciocínio de Comprometido/Realizado da aba Orçamento
+      // (fatia 4a): soma só valor_contratado/valor_realizado, nunca cotado.
+      if (canFinancials) {
+        for (const eventId of openEventIds) {
+          const budget = store.budgets.find((b) => b.eventId === eventId && b.companyId === companyId);
+          if (!budget) continue;
+          const activeItems = store.budgetItems.filter(
+            (i) => i.eventId === eventId && i.companyId === companyId && i.status !== "cancelado",
+          );
+          const comprometido = activeItems.reduce((sum, i) => sum + (i.valorContratado ?? 0), 0);
+          const realizado = activeItems.reduce((sum, i) => sum + (i.valorRealizado ?? 0), 0);
+          const event = eventById.get(eventId);
+          if (!event) continue;
+          if (realizado > budget.valorPrevisto) {
+            push({
+              type: "orcamento_excedido",
+              severity: "danger",
+              eventId: event.id,
+              eventTitulo: event.titulo,
+              titulo: "Orçamento realizado ultrapassou o valor previsto",
+              referenceAt: budget.updatedAt,
+            });
+          } else if (comprometido > budget.valorPrevisto) {
+            push({
+              type: "orcamento_excedido",
+              severity: "warning",
+              eventId: event.id,
+              eventTitulo: event.titulo,
+              titulo: "Orçamento comprometido acima do valor previsto",
+              referenceAt: budget.updatedAt,
+            });
+          }
+        }
+      }
+
+      return items.sort((a, b) => b.referenceAt.localeCompare(a.referenceAt));
     },
   },
 };
