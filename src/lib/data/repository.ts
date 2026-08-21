@@ -3,6 +3,7 @@ import type {
   AuditLog,
   AuthSession,
   Budget,
+  BudgetItem,
   ChecklistItem,
   Company,
   ComplexityAssessment,
@@ -372,6 +373,21 @@ export interface Repository {
       eventId: string,
       input: Pick<Budget, "valorPrevisto" | "observacoes" | "status">,
     ): Promise<Budget>;
+  };
+
+  // Financeiro detalhado — itens de orçamento (Fase 2) ------------------------
+  budgetItems: {
+    listByEvent(session: AuthSession, eventId: string): Promise<BudgetItem[]>;
+    create(
+      session: AuthSession,
+      input: Omit<BudgetItem, "id" | "companyId" | "createdAt" | "updatedAt">,
+    ): Promise<BudgetItem>;
+    update(
+      session: AuthSession,
+      id: string,
+      input: Partial<Omit<BudgetItem, "id" | "companyId" | "eventId">>,
+    ): Promise<BudgetItem>;
+    remove(session: AuthSession, id: string): Promise<void>;
   };
 
   // Complexidade ------------------------------------------------------------

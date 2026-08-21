@@ -1,6 +1,7 @@
 import type {
   AuditLog,
   AuthSession,
+  BudgetItem,
   ChecklistItem,
   ComplexityAssessment,
   EventDocument,
@@ -951,6 +952,65 @@ export const mockRepository: Repository = {
       if (event) event.previstoOrcamento = true;
       pushAudit(session, { acao: "edicao", entidade: "orcamento", entidadeId: budget.id, descricao: `Orçamento previsto do evento atualizado.` });
       return budget;
+    },
+  },
+
+  budgetItems: {
+    async listByEvent(session, eventId) {
+      const store = getStore();
+      const companyId = requireCompany(session);
+      return store.budgetItems
+        .filter((i) => i.eventId === eventId && i.companyId === companyId)
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    },
+    async create(session, input) {
+      assertCan(session.perfil, "manage_budget");
+      const store = getStore();
+      const companyId = requireCompany(session);
+      const event = store.events.find((e) => e.id === input.eventId && e.companyId === companyId);
+      if (!event) throw new Error("Evento não encontrado.");
+      if (input.supplierId) {
+        const supplier = store.suppliers.find((s) => s.id === input.supplierId && s.companyId === companyId);
+        if (!supplier) throw new Error("Fornecedor não encontrado nesta empresa.");
+      }
+      for (const [label, value] of [
+        ["cotado", input.valorCotado],
+        ["contratado", input.valorContratado],
+        ["realizado", input.valorRealizado],
+      ] as const) {
+        if (value != null && value < 0) throw new Error(`Valor ${label} não pode ser negativo.`);
+      }
+      const item: BudgetItem = { id: nextId("budget_item"), companyId, createdAt: nowIso(), updatedAt: nowIso(), ...input };
+      store.budgetItems.push(item);
+      pushAudit(session, { acao: "criacao", entidade: "orcamento_item", entidadeId: item.id, descricao: `Item de orçamento "${item.descricao}" criado.` });
+      return item;
+    },
+    async update(session, id, input) {
+      assertCan(session.perfil, "manage_budget");
+      const store = getStore();
+      const companyId = requireCompany(session);
+      const item = store.budgetItems.find((i) => i.id === id && i.companyId === companyId);
+      if (!item) throw new Error("Item de orçamento não encontrado.");
+      if (input.supplierId) {
+        const supplier = store.suppliers.find((s) => s.id === input.supplierId && s.companyId === companyId);
+        if (!supplier) throw new Error("Fornecedor não encontrado nesta empresa.");
+      }
+      for (const [label, value] of [
+        ["cotado", input.valorCotado],
+        ["contratado", input.valorContratado],
+        ["realizado", input.valorRealizado],
+      ] as const) {
+        if (value != null && value < 0) throw new Error(`Valor ${label} não pode ser negativo.`);
+      }
+      Object.assign(item, input, { updatedAt: nowIso() });
+      pushAudit(session, { acao: "edicao", entidade: "orcamento_item", entidadeId: item.id, descricao: `Item de orçamento "${item.descricao}" atualizado.` });
+      return item;
+    },
+    async remove(session, id) {
+      assertCan(session.perfil, "manage_budget");
+      const store = getStore();
+      const companyId = requireCompany(session);
+      store.budgetItems = store.budgetItems.filter((i) => !(i.id === id && i.companyId === companyId));
     },
   },
 

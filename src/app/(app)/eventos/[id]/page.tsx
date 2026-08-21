@@ -13,6 +13,7 @@ import {
   SCHEDULE_ITEM_PRIORITY_LABELS,
   EVENT_DOCUMENT_CATEGORY_LABELS,
   REGISTRATION_STATUS_LABELS,
+  BUDGET_ITEM_STATUS_LABELS,
   type EventStatus,
   type ScheduleItem,
 } from "@/lib/domain/types";
@@ -24,6 +25,7 @@ import {
   defaultComplexityFactors,
   calculateComplexity,
 } from "@/lib/domain/complexity";
+import { CATEGORIAS_ORCAMENTO } from "@/lib/domain/catalog";
 import { Card, Badge, Banner, EmptyState, Field, Input, Select, Textarea } from "@/components/ui/primitives";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
@@ -44,6 +46,8 @@ import { ScheduleItemStatusSelect } from "../ScheduleItemStatusSelect";
 import { addDocument, archiveDocument, restoreDocument } from "../document-actions";
 import { addRegistration, checkInRegistration, undoCheckInRegistration, removeRegistration } from "../registration-actions";
 import { RegistrationStatusSelect } from "../RegistrationStatusSelect";
+import { addBudgetItem, updateBudgetItemValues, removeBudgetItem } from "../budget-item-actions";
+import { BudgetItemStatusSelect } from "../BudgetItemStatusSelect";
 
 const STATUS_FLOW: EventStatus[] = [
   "rascunho",
@@ -124,6 +128,7 @@ export default async function EventDetailPage({
     documents,
     registrations,
     participantCatalog,
+    budgetItems,
   ] = await Promise.all([
     repository.events.getSessions(session, id),
     repository.reservations.list(session, { eventId: id }),
@@ -140,6 +145,7 @@ export default async function EventDetailPage({
     repository.documents.listByEvent(session, id, { includeArchived: true }),
     repository.registrations.listByEvent(session, id),
     repository.participants.list(session, { status: "ativo" }),
+    repository.budgetItems.listByEvent(session, id),
   ]);
   const spaceById = new Map((await repository.spaces.list(session)).map((s) => [s.id, s]));
 
@@ -207,6 +213,22 @@ export default async function EventDetailPage({
   const visibleRegistrations = registrationSearch
     ? registrations.filter((r) => (participantById.get(r.participantId)?.nome ?? "").toLowerCase().includes(registrationSearch))
     : registrations;
+
+  // Financeiro detalhado (docs/FASE_02_GESTAO.md seção 9): indicadores
+  // sempre derivados dos itens na hora — nunca persistidos, para nunca
+  // ficarem desatualizados em relação aos valores lançados.
+  const activeBudgetItems = budgetItems.filter((i) => i.status !== "cancelado");
+  const orcamentoTotal = budget?.valorPrevisto ?? 0;
+  const comprometido = activeBudgetItems.reduce((sum, i) => sum + (i.valorContratado ?? i.valorCotado ?? 0), 0);
+  const realizado = activeBudgetItems.reduce((sum, i) => sum + (i.valorRealizado ?? 0), 0);
+  const saldo = orcamentoTotal - comprometido;
+  const variacaoRealizado = realizado - orcamentoTotal;
+  const custoPorCategoria = new Map<string, number>();
+  for (const item of activeBudgetItems) {
+    const valor = item.valorRealizado ?? item.valorContratado ?? item.valorCotado ?? 0;
+    custoPorCategoria.set(item.categoria, (custoPorCategoria.get(item.categoria) ?? 0) + valor);
+  }
+  const custoPorParticipante = confirmedRegistrations.length > 0 ? (realizado || comprometido) / confirmedRegistrations.length : null;
 
   const factors = complexity?.fatores ?? defaultComplexityFactors();
   const preview = calculateComplexity(factors);
@@ -1054,39 +1076,195 @@ export default async function EventDetailPage({
           )}
 
           {activeTab === "orcamento" && canViewFinancials && (
-            <form action={saveBudget.bind(null, id)} className="max-w-md space-y-3">
-              <Field label="Valor previsto (R$)" htmlFor="valorPrevisto">
-                <Input
-                  id="valorPrevisto"
-                  name="valorPrevisto"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  defaultValue={budget?.valorPrevisto ?? ""}
-                  disabled={!canBudget}
-                />
-              </Field>
-              <Field label="Status" htmlFor="budgetStatus">
-                <Select id="budgetStatus" name="status" defaultValue={budget?.status ?? "previsto"} disabled={!canBudget}>
-                  <option value="previsto">Previsto</option>
-                  <option value="em_analise">Em análise</option>
-                  <option value="aprovado">Aprovado</option>
-                </Select>
-              </Field>
-              <Field label="Observações" htmlFor="observacoes">
-                <Textarea id="observacoes" name="observacoes" defaultValue={budget?.observacoes} disabled={!canBudget} />
-              </Field>
-              {budget && (
+            <div className="space-y-6">
+              <form action={saveBudget.bind(null, id)} className="max-w-md space-y-3">
+                <Field label="Valor previsto (R$)" htmlFor="valorPrevisto">
+                  <Input
+                    id="valorPrevisto"
+                    name="valorPrevisto"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    defaultValue={budget?.valorPrevisto ?? ""}
+                    disabled={!canBudget}
+                  />
+                </Field>
+                <Field label="Status" htmlFor="budgetStatus">
+                  <Select id="budgetStatus" name="status" defaultValue={budget?.status ?? "previsto"} disabled={!canBudget}>
+                    <option value="previsto">Previsto</option>
+                    <option value="em_analise">Em análise</option>
+                    <option value="aprovado">Aprovado</option>
+                  </Select>
+                </Field>
+                <Field label="Observações" htmlFor="observacoes">
+                  <Textarea id="observacoes" name="observacoes" defaultValue={budget?.observacoes} disabled={!canBudget} />
+                </Field>
+                {canBudget && (
+                  <Button type="submit" size="sm">
+                    Salvar orçamento
+                  </Button>
+                )}
+              </form>
+
+              {/* Financeiro detalhado (docs/FASE_02_GESTAO.md seção 9) */}
+              <div className="pt-4 border-t border-border-subtle space-y-4">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                  <div className="rounded-[var(--radius-sm)] bg-surface-muted p-3">
+                    <p className="text-base font-semibold text-[var(--foreground)]">{formatCurrency(orcamentoTotal)}</p>
+                    <p className="text-xs text-fg-muted">Orçamento total</p>
+                  </div>
+                  <div className="rounded-[var(--radius-sm)] bg-surface-muted p-3">
+                    <p className="text-base font-semibold text-[var(--foreground)]">{formatCurrency(comprometido)}</p>
+                    <p className="text-xs text-fg-muted">Comprometido</p>
+                  </div>
+                  <div className="rounded-[var(--radius-sm)] bg-surface-muted p-3">
+                    <p className="text-base font-semibold text-[var(--foreground)]">{formatCurrency(realizado)}</p>
+                    <p className="text-xs text-fg-muted">Realizado</p>
+                  </div>
+                  <div className={`rounded-[var(--radius-sm)] p-3 ${saldo < 0 ? "bg-danger-50" : "bg-success-50"}`}>
+                    <p className={`text-base font-semibold ${saldo < 0 ? "text-danger-700" : "text-success-700"}`}>
+                      {formatCurrency(saldo)}
+                    </p>
+                    <p className="text-xs text-fg-muted">Saldo</p>
+                  </div>
+                </div>
                 <p className="text-sm text-fg-muted">
-                  Valor atual: <strong>{formatCurrency(budget.valorPrevisto)}</strong>
+                  Variação previsto x realizado:{" "}
+                  <strong className={variacaoRealizado > 0 ? "text-danger-700" : "text-success-700"}>
+                    {variacaoRealizado > 0 ? "+" : ""}
+                    {formatCurrency(variacaoRealizado)}
+                  </strong>
+                  {custoPorParticipante != null && (
+                    <>
+                      {" "}
+                      · Custo por participante confirmado: <strong>{formatCurrency(custoPorParticipante)}</strong>
+                    </>
+                  )}
                 </p>
-              )}
-              {canBudget && (
-                <Button type="submit" size="sm">
-                  Salvar orçamento
-                </Button>
-              )}
-            </form>
+                {custoPorCategoria.size > 0 && (
+                  <div>
+                    <p className="text-xs text-fg-muted uppercase tracking-wide mb-1.5">Custo por categoria</p>
+                    <ul className="space-y-1">
+                      {Array.from(custoPorCategoria.entries())
+                        .sort((a, b) => b[1] - a[1])
+                        .map(([categoria, valor]) => (
+                          <li key={categoria} className="flex items-center justify-between text-sm">
+                            <span className="text-[var(--foreground)]">{categoria}</span>
+                            <span className="text-fg-muted">{formatCurrency(valor)}</span>
+                          </li>
+                        ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-4 border-t border-border-subtle space-y-4">
+                <p className="text-xs font-semibold uppercase text-fg-muted">Itens de orçamento</p>
+                {budgetItems.length === 0 ? (
+                  <EmptyState title="Nenhum item de orçamento cadastrado." />
+                ) : (
+                  <ul className="divide-y divide-border-subtle -mx-5">
+                    {budgetItems.map((item) => (
+                      <li key={item.id} className="px-5 py-3 space-y-2 text-sm">
+                        <div className="flex items-center justify-between gap-3 flex-wrap">
+                          <div>
+                            <p className="font-medium text-[var(--foreground)]">{item.descricao}</p>
+                            <p className="text-xs text-fg-muted">
+                              {item.categoria}
+                              {item.supplierId ? ` · ${supplierById.get(item.supplierId)?.nome ?? ""}` : ""}
+                            </p>
+                          </div>
+                          {canBudget ? (
+                            <div className="flex items-center gap-2">
+                              <BudgetItemStatusSelect eventId={id} itemId={item.id} current={item.status} />
+                              <ConfirmButton
+                                size="sm"
+                                variant="ghost"
+                                title="Remover item de orçamento"
+                                description={`O item "${item.descricao}" será removido permanentemente do orçamento deste evento.`}
+                                confirmLabel="Remover"
+                                aria-label={`Remover item ${item.descricao}`}
+                                className="!px-2 !py-1 !text-danger-700"
+                                onConfirm={removeBudgetItem.bind(null, id, item.id)}
+                              >
+                                Remover
+                              </ConfirmButton>
+                            </div>
+                          ) : (
+                            <Badge tone="brand">{BUDGET_ITEM_STATUS_LABELS[item.status]}</Badge>
+                          )}
+                        </div>
+                        <p className="text-xs text-fg-muted">
+                          {item.valorCotado != null && `Cotado: ${formatCurrency(item.valorCotado)}`}
+                          {item.valorContratado != null && ` · Contratado: ${formatCurrency(item.valorContratado)}`}
+                          {item.valorRealizado != null && ` · Realizado: ${formatCurrency(item.valorRealizado)}`}
+                        </p>
+                        {canBudget && (
+                          <form
+                            action={updateBudgetItemValues.bind(null, id, item.id)}
+                            className="flex flex-wrap items-end gap-2"
+                          >
+                            <Field label="Cotado (R$)" htmlFor={`vc-${item.id}`}>
+                              <Input id={`vc-${item.id}`} name="valorCotado" type="number" min={0} step="0.01" defaultValue={item.valorCotado ?? ""} className="!py-1 !text-xs" />
+                            </Field>
+                            <Field label="Contratado (R$)" htmlFor={`vco-${item.id}`}>
+                              <Input id={`vco-${item.id}`} name="valorContratado" type="number" min={0} step="0.01" defaultValue={item.valorContratado ?? ""} className="!py-1 !text-xs" />
+                            </Field>
+                            <Field label="Realizado (R$)" htmlFor={`vr-${item.id}`}>
+                              <Input id={`vr-${item.id}`} name="valorRealizado" type="number" min={0} step="0.01" defaultValue={item.valorRealizado ?? ""} className="!py-1 !text-xs" />
+                            </Field>
+                            <Button type="submit" variant="ghost" size="sm">
+                              Salvar valores
+                            </Button>
+                          </form>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {canBudget && (
+                  <form
+                    action={addBudgetItem.bind(null, id)}
+                    className="pt-4 border-t border-border-subtle grid sm:grid-cols-2 gap-3 items-end"
+                  >
+                    <Field label="Descrição" htmlFor="bi-descricao">
+                      <Input id="bi-descricao" name="descricao" required placeholder="Ex: Locação do salão principal" />
+                    </Field>
+                    <Field label="Categoria" htmlFor="bi-categoria">
+                      <Select id="bi-categoria" name="categoria" required defaultValue="">
+                        <option value="" disabled>
+                          Selecione
+                        </option>
+                        {CATEGORIAS_ORCAMENTO.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field label="Fornecedor" htmlFor="bi-supplierId" hint="Opcional">
+                      <Select id="bi-supplierId" name="supplierId" defaultValue="">
+                        <option value="">Nenhum</option>
+                        {supplierCatalog.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.nome}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field label="Valor cotado (R$)" htmlFor="bi-valorCotado" hint="Opcional">
+                      <Input id="bi-valorCotado" name="valorCotado" type="number" min={0} step="0.01" />
+                    </Field>
+                    <div className="sm:col-span-2">
+                      <Button type="submit" variant="secondary" size="sm">
+                        Adicionar item
+                      </Button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            </div>
           )}
 
           {activeTab === "complexidade" && (
