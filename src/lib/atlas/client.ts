@@ -14,7 +14,18 @@ import Anthropic from "@anthropic-ai/sdk";
  * checa isAtlasConfigured() antes.
  */
 
-export const ATLAS_MODEL = "claude-opus-5";
+const DEFAULT_ATLAS_MODEL = "claude-opus-5";
+
+/**
+ * Configurável via ATLAS_MODEL (seção 16 do validador: "modelo
+ * configurável por variável, por exemplo ATLAS_MODEL") — o modelo pago
+ * ainda não foi decidido para produção; por enquanto usa o valor
+ * atualmente configurado como padrão (claude-opus-5) até uma decisão
+ * formal trocar isso sem precisar editar código.
+ */
+export function getAtlasModel(): string {
+  return process.env.ATLAS_MODEL?.trim() || DEFAULT_ATLAS_MODEL;
+}
 
 export function isAtlasConfigured(): boolean {
   return Boolean(process.env.ANTHROPIC_API_KEY);

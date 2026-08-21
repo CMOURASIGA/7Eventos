@@ -5,7 +5,9 @@ import type { AuthSession } from "@/lib/domain/types";
 import type { Repository } from "@/lib/data/repository";
 import { collectEventContext } from "./context";
 import { buildAtlasSystemPrompt } from "./prompt";
-import { getAtlasClient, ATLAS_MODEL } from "./client";
+import { getAtlasClient, getAtlasModel } from "./client";
+import { acquireAtlasCall, releaseAtlasCall } from "./limiter";
+import { AtlasValidationError, recordAtlasAudit } from "./chat";
 
 /**
  * Atlas (Fase 3) - "resumo executivo" (docs/FASE_03_ATLAS.md seção 5).
@@ -44,39 +46,72 @@ export async function generateExecutiveSummary(
   eventId: string,
   repository: Repository,
 ): Promise<AtlasSummary> {
-  const context = await collectEventContext(session, eventId, repository);
-  if (!context) {
-    throw new Error("Evento não encontrado.");
+  await acquireAtlasCall(session, repository);
+  const startedAt = Date.now();
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let context: Awaited<ReturnType<typeof collectEventContext>> = null;
+
+  try {
+    context = await collectEventContext(session, eventId, repository);
+    if (!context) {
+      throw new AtlasValidationError("Evento não encontrado.");
+    }
+
+    const user = await repository.users.get(session, session.userId);
+    const systemPrompt = buildAtlasSystemPrompt(context, user?.nome ?? "usuário");
+
+    const client = getAtlasClient();
+    const model = getAtlasModel();
+    const response = await client.messages.parse({
+      model,
+      max_tokens: 3000,
+      system: systemPrompt,
+      messages: [
+        {
+          role: "user",
+          content:
+            "Gere o resumo executivo deste evento agora, seguindo exatamente o formato pedido. Deixe null/lista vazia qualquer seção sem dado no contexto — nunca invente.",
+        },
+      ],
+      output_config: { format: zodOutputFormat(AtlasSummarySchema) },
+    });
+
+    inputTokens = response.usage?.input_tokens ?? 0;
+    outputTokens = response.usage?.output_tokens ?? 0;
+
+    if (!response.parsed_output) {
+      throw new Error("Atlas não conseguiu montar o resumo executivo desta vez.");
+    }
+
+    await recordAtlasAudit(session, repository, {
+      entidade: "atlas_resumo",
+      entidadeId: eventId,
+      descricao: `Resumo executivo gerado pelo Atlas para o evento "${context.evento.titulo}".`,
+      status: "sucesso",
+      model,
+      inputTokens,
+      outputTokens,
+      durationMs: Date.now() - startedAt,
+    });
+
+    return response.parsed_output;
+  } catch (err) {
+    await recordAtlasAudit(session, repository, {
+      entidade: "atlas_resumo",
+      entidadeId: eventId,
+      descricao: context
+        ? `Falha ao gerar resumo executivo para o evento "${context.evento.titulo}".`
+        : "Falha ao gerar resumo executivo.",
+      status: "falha",
+      model: getAtlasModel(),
+      inputTokens,
+      outputTokens,
+      durationMs: Date.now() - startedAt,
+      errorCode: err instanceof Error ? err.name || "unknown_error" : "unknown_error",
+    });
+    throw err;
+  } finally {
+    releaseAtlasCall(session);
   }
-
-  const user = await repository.users.get(session, session.userId);
-  const systemPrompt = buildAtlasSystemPrompt(context, user?.nome ?? "usuário");
-
-  const client = getAtlasClient();
-  const response = await client.messages.parse({
-    model: ATLAS_MODEL,
-    max_tokens: 3000,
-    system: systemPrompt,
-    messages: [
-      {
-        role: "user",
-        content:
-          "Gere o resumo executivo deste evento agora, seguindo exatamente o formato pedido. Deixe null/lista vazia qualquer seção sem dado no contexto — nunca invente.",
-      },
-    ],
-    output_config: { format: zodOutputFormat(AtlasSummarySchema) },
-  });
-
-  if (!response.parsed_output) {
-    throw new Error("Atlas não conseguiu montar o resumo executivo desta vez.");
-  }
-
-  await repository.audit.record(session, {
-    acao: "interacao_ia",
-    entidade: "atlas_resumo",
-    entidadeId: eventId,
-    descricao: `Resumo executivo gerado pelo Atlas para o evento "${context.evento.titulo}".`,
-  });
-
-  return response.parsed_output;
 }
