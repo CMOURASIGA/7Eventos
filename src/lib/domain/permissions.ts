@@ -29,6 +29,8 @@ export type Capability =
   | "view_audit"
   | "manage_suppliers"
   | "manage_team"
+  | "manage_schedule"
+  | "manage_documents"
   | "manage_platform"; // superadmin apenas
 
 const MATRIX: Record<Role, Capability[]> = {
@@ -49,6 +51,8 @@ const MATRIX: Record<Role, Capability[]> = {
     "view_audit",
     "manage_suppliers",
     "manage_team",
+    "manage_schedule",
+    "manage_documents",
   ],
   gestor_eventos: [
     "manage_spaces",
@@ -63,12 +67,23 @@ const MATRIX: Record<Role, Capability[]> = {
     "view_financials",
     "manage_suppliers",
     "manage_team",
+    "manage_schedule",
+    "manage_documents",
   ],
   // Pode criar eventos (sempre nascem em rascunho) e organizar reservas/
-  // checklist, mas aprovação, cancelamento, edição de campos já publicados
-  // e valores financeiros seguem exclusivos de Gestor/Admin. Acessa
-  // relatórios operacionais (view_reports), mas não view_financials.
-  operador: ["view_event", "create_event", "manage_checklist", "manage_reservations", "view_reports"],
+  // checklist/cronograma/documentos do dia a dia, mas aprovação,
+  // cancelamento, edição de campos já publicados e valores financeiros
+  // seguem exclusivos de Gestor/Admin. Acessa relatórios operacionais
+  // (view_reports), mas não view_financials.
+  operador: [
+    "view_event",
+    "create_event",
+    "manage_checklist",
+    "manage_reservations",
+    "manage_schedule",
+    "manage_documents",
+    "view_reports",
+  ],
   consulta: ["view_event", "view_reports"],
 };
 

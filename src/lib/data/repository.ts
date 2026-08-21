@@ -7,12 +7,14 @@ import type {
   Company,
   ComplexityAssessment,
   ComplexityFactors,
+  EventDocument,
   EventEntity,
   EventSession,
   EventStatus,
   EventSupplier,
   EventTeamMember,
   Reservation,
+  ScheduleItem,
   Space,
   StatusHistoryEntry,
   Supplier,
@@ -273,6 +275,42 @@ export interface Repository {
       input: Partial<Omit<EventTeamMember, "id" | "companyId" | "eventId" | "userId">>,
     ): Promise<EventTeamMember>;
     remove(session: AuthSession, id: string): Promise<void>;
+  };
+
+  // Cronograma operacional (Fase 2) -----------------------------------------
+  schedule: {
+    listByEvent(session: AuthSession, eventId: string): Promise<ScheduleItem[]>;
+    create(
+      session: AuthSession,
+      input: Omit<ScheduleItem, "id" | "companyId" | "createdAt" | "updatedAt">,
+    ): Promise<ScheduleItem>;
+    update(
+      session: AuthSession,
+      id: string,
+      input: Partial<Omit<ScheduleItem, "id" | "companyId" | "eventId">>,
+    ): Promise<ScheduleItem>;
+    remove(session: AuthSession, id: string): Promise<void>;
+  };
+
+  // Documentos do evento (Fase 2) --------------------------------------------
+  documents: {
+    listByEvent(
+      session: AuthSession,
+      eventId: string,
+      options?: { includeArchived?: boolean },
+    ): Promise<EventDocument[]>;
+    create(
+      session: AuthSession,
+      input: Omit<EventDocument, "id" | "companyId" | "status" | "createdAt" | "updatedAt" | "arquivadoEm">,
+    ): Promise<EventDocument>;
+    update(
+      session: AuthSession,
+      id: string,
+      input: Partial<Omit<EventDocument, "id" | "companyId" | "eventId" | "status" | "arquivadoEm">>,
+    ): Promise<EventDocument>;
+    /** Exclusão lógica (docs/FASE_02_GESTAO.md seção 5) — nunca remove a linha fisicamente. */
+    archive(session: AuthSession, id: string): Promise<EventDocument>;
+    restore(session: AuthSession, id: string): Promise<EventDocument>;
   };
 
   // Orçamento --------------------------------------------------------------

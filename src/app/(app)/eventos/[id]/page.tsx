@@ -9,7 +9,11 @@ import {
   RESERVATION_STATUS_LABELS,
   EVENT_SUPPLIER_SITUACAO_LABELS,
   TEAM_MEMBER_STATUS_LABELS,
+  SCHEDULE_ITEM_STATUS_LABELS,
+  SCHEDULE_ITEM_PRIORITY_LABELS,
+  EVENT_DOCUMENT_CATEGORY_LABELS,
   type EventStatus,
+  type ScheduleItem,
 } from "@/lib/domain/types";
 import {
   COMPLEXITY_LEVEL_LABELS,
@@ -34,6 +38,9 @@ import { linkSupplierToEvent, removeEventSupplier, updateEventSupplierValues } f
 import { EventSupplierSituacaoSelect } from "../EventSupplierSituacaoSelect";
 import { addTeamMember, removeTeamMember } from "../team-actions";
 import { TeamMemberStatusSelect } from "../TeamMemberStatusSelect";
+import { addScheduleItem, removeScheduleItem } from "../schedule-actions";
+import { ScheduleItemStatusSelect } from "../ScheduleItemStatusSelect";
+import { addDocument, archiveDocument, restoreDocument } from "../document-actions";
 
 const STATUS_FLOW: EventStatus[] = [
   "rascunho",
@@ -44,7 +51,21 @@ const STATUS_FLOW: EventStatus[] = [
   "concluido",
 ];
 
-const TAB_KEYS = ["visao-geral", "sessoes", "reservas", "checklist", "fornecedores", "equipe", "orcamento", "complexidade", "historico"] as const;
+const TAB_KEYS = [
+  "visao-geral",
+  "sessoes",
+  "reservas",
+  "checklist",
+  "fornecedores",
+  "equipe",
+  "cronograma",
+  "documentos",
+  "orcamento",
+  "complexidade",
+  "historico",
+] as const;
+const SCHEDULE_FILTERS = ["todas", "atrasadas", "proximas", "concluidas"] as const;
+type ScheduleFilter = (typeof SCHEDULE_FILTERS)[number];
 type TabKey = (typeof TAB_KEYS)[number];
 
 export default async function EventDetailPage({
@@ -52,36 +73,64 @@ export default async function EventDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string; updated?: string; reservationCreated?: string; created?: string; tab?: string; negado?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    updated?: string;
+    reservationCreated?: string;
+    created?: string;
+    tab?: string;
+    negado?: string;
+    cronogramaFiltro?: string;
+    documentosArquivados?: string;
+  }>;
 }) {
   const session = await requireAuthSession();
   const repository = getRepository();
   const { id } = await params;
-  const { error, updated, reservationCreated, created, tab, negado } = await searchParams;
+  const { error, updated, reservationCreated, created, tab, negado, cronogramaFiltro, documentosArquivados } = await searchParams;
   const canViewFinancials = can(session.perfil, "view_financials");
   const requestedTab = (TAB_KEYS as readonly string[]).includes(tab ?? "") ? (tab as TabKey) : "visao-geral";
   // A aba de orçamento expõe valores financeiros — quem não tem
   // "view_financials" cai de volta para a visão geral, mesmo digitando
   // ?tab=orcamento diretamente na URL.
   const activeTab: TabKey = requestedTab === "orcamento" && !canViewFinancials ? "visao-geral" : requestedTab;
+  const scheduleFilter: ScheduleFilter = (SCHEDULE_FILTERS as readonly string[]).includes(cronogramaFiltro ?? "")
+    ? (cronogramaFiltro as ScheduleFilter)
+    : "todas";
+  const showArchivedDocuments = documentosArquivados === "1";
 
   const event = await repository.events.get(session, id);
   if (!event) notFound();
 
-  const [sessions, reservations, checklist, budget, complexity, history, users, space, eventSuppliers, teamMembers, supplierCatalog] =
-    await Promise.all([
-      repository.events.getSessions(session, id),
-      repository.reservations.list(session, { eventId: id }),
-      repository.checklist.listByEvent(session, id),
-      repository.budget.getByEvent(session, id),
-      repository.complexity.getLatestByEvent(session, id),
-      repository.events.getStatusHistory(session, id),
-      repository.users.list(session),
-      event.spaceId ? repository.spaces.get(session, event.spaceId) : Promise.resolve(null),
-      repository.eventSuppliers.listByEvent(session, id),
-      repository.team.listByEvent(session, id),
-      repository.suppliers.list(session, { status: "ativo" }),
-    ]);
+  const [
+    sessions,
+    reservations,
+    checklist,
+    budget,
+    complexity,
+    history,
+    users,
+    space,
+    eventSuppliers,
+    teamMembers,
+    supplierCatalog,
+    scheduleItems,
+    documents,
+  ] = await Promise.all([
+    repository.events.getSessions(session, id),
+    repository.reservations.list(session, { eventId: id }),
+    repository.checklist.listByEvent(session, id),
+    repository.budget.getByEvent(session, id),
+    repository.complexity.getLatestByEvent(session, id),
+    repository.events.getStatusHistory(session, id),
+    repository.users.list(session),
+    event.spaceId ? repository.spaces.get(session, event.spaceId) : Promise.resolve(null),
+    repository.eventSuppliers.listByEvent(session, id),
+    repository.team.listByEvent(session, id),
+    repository.suppliers.list(session, { status: "ativo" }),
+    repository.schedule.listByEvent(session, id),
+    repository.documents.listByEvent(session, id, { includeArchived: true }),
+  ]);
   const spaceById = new Map((await repository.spaces.list(session)).map((s) => [s.id, s]));
 
   const userById = new Map(users.map((u) => [u.id, u]));
@@ -94,6 +143,8 @@ export default async function EventDetailPage({
   const canManageReservations = can(session.perfil, "manage_reservations");
   const canManageSuppliers = can(session.perfil, "manage_suppliers");
   const canManageTeam = can(session.perfil, "manage_team");
+  const canManageSchedule = can(session.perfil, "manage_schedule");
+  const canManageDocuments = can(session.perfil, "manage_documents");
   const teamMemberIds = new Set(teamMembers.map((m) => m.userId));
   const availableUsersForTeam = users.filter((u) => !teamMemberIds.has(u.id));
   // Operador (só "create_event"): pode continuar o próprio rascunho pelo
@@ -103,6 +154,34 @@ export default async function EventDetailPage({
 
   const doneCount = checklist.filter((c) => c.status === "concluido").length;
   const checklistPct = checklist.length > 0 ? Math.round((doneCount / checklist.length) * 100) : 0;
+
+  // Cronograma: "atrasada"/"próxima" são derivadas de inicio/fim + status
+  // atual, não persistidas (docs/FASE_02_GESTAO.md seção 4).
+  const scheduleById = new Map(scheduleItems.map((i) => [i.id, i]));
+  const nowMs = new Date().getTime();
+  const isOverdue = (item: ScheduleItem) =>
+    new Date(item.fim).getTime() < nowMs && item.status !== "concluido" && item.status !== "cancelado";
+  const isUpcoming = (item: ScheduleItem) => new Date(item.inicio).getTime() >= nowMs && item.status !== "cancelado";
+  const overdueSchedule = scheduleItems.filter(isOverdue);
+  const upcomingSchedule = scheduleItems.filter(isUpcoming).sort((a, b) => a.inicio.localeCompare(b.inicio));
+  const doneSchedule = scheduleItems.filter((i) => i.status === "concluido");
+  const visibleSchedule =
+    scheduleFilter === "atrasadas"
+      ? overdueSchedule
+      : scheduleFilter === "proximas"
+        ? upcomingSchedule
+        : scheduleFilter === "concluidas"
+          ? doneSchedule
+          : scheduleItems;
+  // Linha do tempo (docs/FASE_02_GESTAO.md seção 4): barras proporcionais
+  // dentro do intervalo [início mais cedo, fim mais tarde] de todas as
+  // atividades do evento — só faz sentido mostrar com mais de uma.
+  const timelineStart = scheduleItems.length > 0 ? Math.min(...scheduleItems.map((i) => new Date(i.inicio).getTime())) : 0;
+  const timelineEnd = scheduleItems.length > 0 ? Math.max(...scheduleItems.map((i) => new Date(i.fim).getTime())) : 0;
+  const timelineSpan = Math.max(timelineEnd - timelineStart, 1);
+
+  const visibleDocuments = showArchivedDocuments ? documents : documents.filter((d) => d.status === "ativo");
+  const archivedDocumentsCount = documents.filter((d) => d.status === "arquivado").length;
 
   const factors = complexity?.fatores ?? defaultComplexityFactors();
   const preview = calculateComplexity(factors);
@@ -180,6 +259,8 @@ export default async function EventDetailPage({
             { key: "checklist", label: "Checklist", count: checklist.length },
             { key: "fornecedores", label: "Fornecedores", count: eventSuppliers.length },
             { key: "equipe", label: "Equipe", count: teamMembers.length },
+            { key: "cronograma", label: "Cronograma", count: scheduleItems.length },
+            { key: "documentos", label: "Documentos", count: visibleDocuments.length },
             ...(canViewFinancials ? [{ key: "orcamento", label: "Orçamento" }] : []),
             { key: "complexidade", label: "Complexidade" },
             { key: "historico", label: "Histórico", count: history.length },
@@ -539,6 +620,283 @@ export default async function EventDetailPage({
                   <div className="sm:col-span-2">
                     <Button type="submit" variant="secondary" size="sm">
                       Adicionar membro
+                    </Button>
+                  </div>
+                </form>
+              )}
+            </div>
+          )}
+
+          {activeTab === "cronograma" && (
+            <div className="space-y-4">
+              {scheduleItems.length > 1 && (
+                <div className="space-y-1.5">
+                  <p className="text-xs text-fg-muted uppercase tracking-wide">Linha do tempo</p>
+                  <div className="relative h-8 bg-surface-muted rounded-[var(--radius-sm)] overflow-hidden">
+                    {scheduleItems.map((item) => {
+                      const left = ((new Date(item.inicio).getTime() - timelineStart) / timelineSpan) * 100;
+                      const width = Math.max(
+                        ((new Date(item.fim).getTime() - new Date(item.inicio).getTime()) / timelineSpan) * 100,
+                        1,
+                      );
+                      const tone =
+                        item.status === "concluido"
+                          ? "bg-success-500"
+                          : item.status === "cancelado"
+                            ? "bg-fg-muted"
+                            : isOverdue(item)
+                              ? "bg-danger-500"
+                              : "bg-brand-600";
+                      return (
+                        <div
+                          key={item.id}
+                          title={`${item.titulo} · ${formatDateTime(item.inicio)} até ${formatDateTime(item.fim)}`}
+                          className={`absolute top-1 h-6 rounded-[var(--radius-sm)] ${tone} opacity-80`}
+                          style={{ left: `${left}%`, width: `${width}%` }}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-1.5">
+                {(
+                  [
+                    ["todas", `Todas (${scheduleItems.length})`],
+                    ["atrasadas", `Atrasadas (${overdueSchedule.length})`],
+                    ["proximas", `Próximas (${upcomingSchedule.length})`],
+                    ["concluidas", `Concluídas (${doneSchedule.length})`],
+                  ] as [ScheduleFilter, string][]
+                ).map(([key, label]) => (
+                  <Link
+                    key={key}
+                    href={`/eventos/${id}?tab=cronograma${key === "todas" ? "" : `&cronogramaFiltro=${key}`}`}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                      scheduleFilter === key
+                        ? "bg-brand-600 border-brand-600 text-white"
+                        : "border-border text-fg-muted hover:text-[var(--foreground)] hover:border-border-strong"
+                    }`}
+                  >
+                    {label}
+                  </Link>
+                ))}
+              </div>
+
+              {visibleSchedule.length === 0 ? (
+                <EmptyState title="Nenhuma atividade encontrada para este filtro." />
+              ) : (
+                <ul className="divide-y divide-border-subtle -mx-5">
+                  {visibleSchedule
+                    .slice()
+                    .sort((a, b) => a.inicio.localeCompare(b.inicio))
+                    .map((item) => {
+                      const dependency = item.dependeDeId ? scheduleById.get(item.dependeDeId) : undefined;
+                      return (
+                        <li key={item.id} className="px-5 py-3 flex items-center justify-between gap-3 flex-wrap text-sm">
+                          <div>
+                            <p className="font-medium text-[var(--foreground)] flex items-center gap-2 flex-wrap">
+                              {item.titulo}
+                              {isOverdue(item) && <Badge tone="danger">Atrasada</Badge>}
+                              <Badge tone={item.prioridade === "alta" ? "warning" : "neutral"}>
+                                {SCHEDULE_ITEM_PRIORITY_LABELS[item.prioridade]}
+                              </Badge>
+                            </p>
+                            <p className="text-xs text-fg-muted">
+                              {formatDateTime(item.inicio)} até {formatDateTime(item.fim)}
+                              {item.responsavelId ? ` · Responsável: ${userById.get(item.responsavelId)?.nome ?? ""}` : ""}
+                            </p>
+                            {dependency && <p className="text-xs text-fg-muted mt-0.5">Depende de: {dependency.titulo}</p>}
+                            {item.descricao && <p className="text-xs text-fg-muted mt-0.5">{item.descricao}</p>}
+                          </div>
+                          {canManageSchedule ? (
+                            <div className="flex items-center gap-2">
+                              <ScheduleItemStatusSelect eventId={id} itemId={item.id} current={item.status} />
+                              <ConfirmButton
+                                size="sm"
+                                variant="ghost"
+                                title="Remover atividade do cronograma"
+                                description={`A atividade "${item.titulo}" será removida permanentemente do cronograma deste evento.`}
+                                confirmLabel="Remover"
+                                aria-label={`Remover atividade ${item.titulo}`}
+                                className="!px-2 !py-1 !text-danger-700"
+                                onConfirm={removeScheduleItem.bind(null, id, item.id)}
+                              >
+                                Remover
+                              </ConfirmButton>
+                            </div>
+                          ) : (
+                            <Badge tone={item.status === "concluido" ? "success" : "neutral"}>
+                              {SCHEDULE_ITEM_STATUS_LABELS[item.status]}
+                            </Badge>
+                          )}
+                        </li>
+                      );
+                    })}
+                </ul>
+              )}
+
+              {canManageSchedule && (
+                <form
+                  action={addScheduleItem.bind(null, id)}
+                  className="pt-4 border-t border-border-subtle grid sm:grid-cols-2 gap-3 items-end"
+                >
+                  <Field label="Título" htmlFor="sc-titulo">
+                    <Input id="sc-titulo" name="titulo" required placeholder="Ex: Montagem de estrutura" />
+                  </Field>
+                  <Field label="Prioridade" htmlFor="sc-prioridade">
+                    <Select id="sc-prioridade" name="prioridade" defaultValue="media">
+                      <option value="baixa">Baixa</option>
+                      <option value="media">Média</option>
+                      <option value="alta">Alta</option>
+                    </Select>
+                  </Field>
+                  <Field label="Início" htmlFor="sc-inicio">
+                    <Input id="sc-inicio" name="inicio" type="datetime-local" required />
+                  </Field>
+                  <Field label="Fim" htmlFor="sc-fim">
+                    <Input id="sc-fim" name="fim" type="datetime-local" required />
+                  </Field>
+                  <Field label="Responsável" htmlFor="sc-responsavelId">
+                    <Select id="sc-responsavelId" name="responsavelId" defaultValue="">
+                      <option value="">Nenhum</option>
+                      {users.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.nome}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="Depende de" htmlFor="sc-dependeDeId" hint="Opcional — outra atividade deste evento">
+                    <Select id="sc-dependeDeId" name="dependeDeId" defaultValue="">
+                      <option value="">Nenhuma</option>
+                      {scheduleItems.map((i) => (
+                        <option key={i.id} value={i.id}>
+                          {i.titulo}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <div className="sm:col-span-2">
+                    <Field label="Observação" htmlFor="sc-observacao">
+                      <Input id="sc-observacao" name="observacao" placeholder="Opcional" />
+                    </Field>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Button type="submit" variant="secondary" size="sm">
+                      Adicionar atividade
+                    </Button>
+                  </div>
+                </form>
+              )}
+            </div>
+          )}
+
+          {activeTab === "documentos" && (
+            <div className="space-y-4">
+              {archivedDocumentsCount > 0 && (
+                <div className="flex justify-end">
+                  <Link
+                    href={`/eventos/${id}?tab=documentos${showArchivedDocuments ? "" : "&documentosArquivados=1"}`}
+                    className="text-xs text-brand-700 font-medium hover:underline"
+                  >
+                    {showArchivedDocuments ? "Ocultar arquivados" : `Ver arquivados (${archivedDocumentsCount})`}
+                  </Link>
+                </div>
+              )}
+              {visibleDocuments.length === 0 ? (
+                <EmptyState title="Nenhum documento registrado para este evento." />
+              ) : (
+                <ul className="divide-y divide-border-subtle -mx-5">
+                  {visibleDocuments.map((doc) => (
+                    <li key={doc.id} className="px-5 py-3 flex items-center justify-between gap-3 flex-wrap text-sm">
+                      <div>
+                        <p className="font-medium text-[var(--foreground)] flex items-center gap-2 flex-wrap">
+                          {doc.urlReferencia ? (
+                            <a href={doc.urlReferencia} target="_blank" rel="noreferrer" className="hover:underline hover:text-brand-700">
+                              {doc.titulo}
+                            </a>
+                          ) : (
+                            doc.titulo
+                          )}
+                          <Badge tone="neutral">{EVENT_DOCUMENT_CATEGORY_LABELS[doc.categoria]}</Badge>
+                          {doc.status === "arquivado" && <Badge tone="warning">Arquivado</Badge>}
+                        </p>
+                        <p className="text-xs text-fg-muted">
+                          {userById.get(doc.responsavelId)?.nome ?? "—"} · {formatDateTime(doc.createdAt)}
+                          {doc.nomeArquivo ? ` · ${doc.nomeArquivo}` : ""}
+                        </p>
+                        {doc.descricao && <p className="text-xs text-fg-muted mt-0.5">{doc.descricao}</p>}
+                      </div>
+                      {canManageDocuments && (
+                        <div className="flex items-center gap-2">
+                          {doc.status === "ativo" ? (
+                            <ConfirmButton
+                              size="sm"
+                              variant="ghost"
+                              title="Arquivar documento"
+                              description={`O documento "${doc.titulo}" será arquivado (exclusão lógica) e deixa de aparecer na lista principal. Nada é apagado permanentemente.`}
+                              confirmLabel="Arquivar"
+                              aria-label={`Arquivar documento ${doc.titulo}`}
+                              className="!px-2 !py-1"
+                              onConfirm={archiveDocument.bind(null, id, doc.id)}
+                            >
+                              Arquivar
+                            </ConfirmButton>
+                          ) : (
+                            <form action={restoreDocument.bind(null, id, doc.id)}>
+                              <Button type="submit" size="sm" variant="ghost" className="!px-2 !py-1">
+                                Restaurar
+                              </Button>
+                            </form>
+                          )}
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {canManageDocuments && (
+                <form
+                  action={addDocument.bind(null, id)}
+                  className="pt-4 border-t border-border-subtle grid sm:grid-cols-2 gap-3 items-end"
+                >
+                  <Field label="Título" htmlFor="doc-titulo">
+                    <Input id="doc-titulo" name="titulo" required placeholder="Ex: Contrato de prestação de serviços" />
+                  </Field>
+                  <Field label="Categoria" htmlFor="doc-categoria">
+                    <Select id="doc-categoria" name="categoria" defaultValue="outros">
+                      {Object.entries(EVENT_DOCUMENT_CATEGORY_LABELS).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="Responsável" htmlFor="doc-responsavelId">
+                    <Select id="doc-responsavelId" name="responsavelId" required defaultValue="">
+                      <option value="" disabled>
+                        Selecione
+                      </option>
+                      {users.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.nome}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="Link de referência" htmlFor="doc-urlReferencia" hint="Ex: link do Drive/SharePoint onde o arquivo está guardado">
+                    <Input id="doc-urlReferencia" name="urlReferencia" type="url" placeholder="https://..." />
+                  </Field>
+                  <div className="sm:col-span-2">
+                    <Field label="Descrição" htmlFor="doc-descricao">
+                      <Input id="doc-descricao" name="descricao" placeholder="Opcional" />
+                    </Field>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Button type="submit" variant="secondary" size="sm">
+                      Registrar documento
                     </Button>
                   </div>
                 </form>

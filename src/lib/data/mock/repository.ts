@@ -3,11 +3,13 @@ import type {
   AuthSession,
   ChecklistItem,
   ComplexityAssessment,
+  EventDocument,
   EventEntity,
   EventSession,
   EventSupplier,
   EventTeamMember,
   Reservation,
+  ScheduleItem,
   Space,
   Supplier,
   User,
@@ -665,6 +667,137 @@ export const mockRepository: Repository = {
       const store = getStore();
       const companyId = requireCompany(session);
       store.teamMembers = store.teamMembers.filter((m) => !(m.id === id && m.companyId === companyId));
+    },
+  },
+
+  schedule: {
+    async listByEvent(session, eventId) {
+      const store = getStore();
+      const companyId = requireCompany(session);
+      return store.scheduleItems
+        .filter((i) => i.eventId === eventId && i.companyId === companyId)
+        .sort((a, b) => a.inicio.localeCompare(b.inicio));
+    },
+    async create(session, input) {
+      assertCan(session.perfil, "manage_schedule");
+      const store = getStore();
+      const companyId = requireCompany(session);
+      const event = store.events.find((e) => e.id === input.eventId && e.companyId === companyId);
+      if (!event) throw new Error("Evento não encontrado.");
+      if (input.responsavelId) {
+        const responsavel = store.users.find((u) => u.id === input.responsavelId && u.companyId === companyId);
+        if (!responsavel) throw new Error("Responsável inválido para esta empresa.");
+      }
+      if (input.dependeDeId) {
+        const dependency = store.scheduleItems.find((i) => i.id === input.dependeDeId && i.eventId === input.eventId);
+        if (!dependency) throw new Error("Atividade de dependência não encontrada neste evento.");
+      }
+      if (!(input.fim > input.inicio)) throw new Error("O fim da atividade precisa ser após o início.");
+      const item: ScheduleItem = { id: nextId("schedule"), companyId, createdAt: nowIso(), updatedAt: nowIso(), ...input };
+      store.scheduleItems.push(item);
+      pushAudit(session, { acao: "criacao", entidade: "cronograma", entidadeId: item.id, descricao: `Atividade "${item.titulo}" adicionada ao cronograma.` });
+      return item;
+    },
+    async update(session, id, input) {
+      assertCan(session.perfil, "manage_schedule");
+      const store = getStore();
+      const companyId = requireCompany(session);
+      const item = store.scheduleItems.find((i) => i.id === id && i.companyId === companyId);
+      if (!item) throw new Error("Atividade não encontrada.");
+      if (input.responsavelId) {
+        const responsavel = store.users.find((u) => u.id === input.responsavelId && u.companyId === companyId);
+        if (!responsavel) throw new Error("Responsável inválido para esta empresa.");
+      }
+      if (input.dependeDeId) {
+        if (input.dependeDeId === id) throw new Error("Uma atividade não pode depender dela mesma.");
+        const dependency = store.scheduleItems.find((i) => i.id === input.dependeDeId && i.eventId === item.eventId);
+        if (!dependency) throw new Error("Atividade de dependência não encontrada neste evento.");
+      }
+      const inicio = input.inicio ?? item.inicio;
+      const fim = input.fim ?? item.fim;
+      if (!(fim > inicio)) throw new Error("O fim da atividade precisa ser após o início.");
+      Object.assign(item, input, { updatedAt: nowIso() });
+      pushAudit(session, { acao: "edicao", entidade: "cronograma", entidadeId: item.id, descricao: `Atividade "${item.titulo}" atualizada.` });
+      return item;
+    },
+    async remove(session, id) {
+      assertCan(session.perfil, "manage_schedule");
+      const store = getStore();
+      const companyId = requireCompany(session);
+      // Atividades que dependiam desta ficam sem dependência, em vez de
+      // manter uma referência solta a um id removido.
+      for (const other of store.scheduleItems) {
+        if (other.dependeDeId === id) other.dependeDeId = undefined;
+      }
+      store.scheduleItems = store.scheduleItems.filter((i) => !(i.id === id && i.companyId === companyId));
+    },
+  },
+
+  documents: {
+    async listByEvent(session, eventId, options) {
+      const store = getStore();
+      const companyId = requireCompany(session);
+      let items = store.documents.filter((d) => d.eventId === eventId && d.companyId === companyId);
+      if (!options?.includeArchived) items = items.filter((d) => d.status === "ativo");
+      return items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    },
+    async create(session, input) {
+      assertCan(session.perfil, "manage_documents");
+      const store = getStore();
+      const companyId = requireCompany(session);
+      const event = store.events.find((e) => e.id === input.eventId && e.companyId === companyId);
+      if (!event) throw new Error("Evento não encontrado.");
+      const responsavel = store.users.find((u) => u.id === input.responsavelId && u.companyId === companyId);
+      if (!responsavel) throw new Error("Responsável inválido para esta empresa.");
+      const document: EventDocument = {
+        id: nextId("document"),
+        companyId,
+        status: "ativo",
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+        ...input,
+      };
+      store.documents.push(document);
+      pushAudit(session, { acao: "criacao", entidade: "documento", entidadeId: document.id, descricao: `Documento "${document.titulo}" registrado.` });
+      return document;
+    },
+    async update(session, id, input) {
+      assertCan(session.perfil, "manage_documents");
+      const store = getStore();
+      const companyId = requireCompany(session);
+      const document = store.documents.find((d) => d.id === id && d.companyId === companyId);
+      if (!document) throw new Error("Documento não encontrado.");
+      if (input.responsavelId) {
+        const responsavel = store.users.find((u) => u.id === input.responsavelId && u.companyId === companyId);
+        if (!responsavel) throw new Error("Responsável inválido para esta empresa.");
+      }
+      Object.assign(document, input, { updatedAt: nowIso() });
+      pushAudit(session, { acao: "edicao", entidade: "documento", entidadeId: document.id, descricao: `Documento "${document.titulo}" atualizado.` });
+      return document;
+    },
+    async archive(session, id) {
+      assertCan(session.perfil, "manage_documents");
+      const store = getStore();
+      const companyId = requireCompany(session);
+      const document = store.documents.find((d) => d.id === id && d.companyId === companyId);
+      if (!document) throw new Error("Documento não encontrado.");
+      document.status = "arquivado";
+      document.arquivadoEm = nowIso();
+      document.updatedAt = nowIso();
+      pushAudit(session, { acao: "edicao", entidade: "documento", entidadeId: document.id, descricao: `Documento "${document.titulo}" arquivado.` });
+      return document;
+    },
+    async restore(session, id) {
+      assertCan(session.perfil, "manage_documents");
+      const store = getStore();
+      const companyId = requireCompany(session);
+      const document = store.documents.find((d) => d.id === id && d.companyId === companyId);
+      if (!document) throw new Error("Documento não encontrado.");
+      document.status = "ativo";
+      document.arquivadoEm = undefined;
+      document.updatedAt = nowIso();
+      pushAudit(session, { acao: "edicao", entidade: "documento", entidadeId: document.id, descricao: `Documento "${document.titulo}" restaurado.` });
+      return document;
     },
   },
 
