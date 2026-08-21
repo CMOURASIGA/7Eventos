@@ -1301,7 +1301,7 @@ export default async function EventDetailPage({
                       </option>
                       {availableParticipants.map((p) => (
                         <option key={p.id} value={p.id}>
-                          {p.nome} — {p.email}
+                          {p.email ? `${p.nome} — ${p.email}` : p.nome}
                         </option>
                       ))}
                     </Select>

@@ -92,9 +92,7 @@ export default async function ParticipantesHubPage({
                     {p.nome}
                   </Link>
                   <p className="text-xs text-fg-muted">
-                    {p.email}
-                    {p.organizacao && ` · ${p.organizacao}`}
-                    {p.categoria && ` · ${p.categoria}`}
+                    {[p.email, p.organizacao, p.categoria].filter(Boolean).join(" · ")}
                   </p>
                 </div>
                 <Badge tone={p.status === "ativo" ? "success" : "neutral"}>{p.status === "ativo" ? "Ativo" : "Inativo"}</Badge>

@@ -61,6 +61,15 @@ function scoped<T extends { companyId: string }>(session: AuthSession, items: T[
   return items.filter((i) => i.companyId === companyId);
 }
 
+// Quem não tem "view_participant_contacts" (perfil Consulta) enxerga o
+// catálogo de participantes sem e-mail/telefone/observações — a proteção
+// vive aqui, na camada de dados, não só escondendo campos na UI (mesmo
+// raciocínio de view_financials nas fatias anteriores).
+function redactParticipantContacts(session: AuthSession, participant: Participant): Participant {
+  if (can(session.perfil, "view_participant_contacts")) return participant;
+  return { ...participant, email: undefined, telefone: undefined, observacoes: undefined };
+}
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -691,11 +700,12 @@ export const mockRepository: Repository = {
       if (filters?.nome) items = items.filter((p) => p.nome.toLowerCase().includes(filters.nome!.toLowerCase()));
       if (filters?.categoria) items = items.filter((p) => p.categoria === filters.categoria);
       if (filters?.status) items = items.filter((p) => p.status === filters.status);
-      return items.sort((a, b) => a.nome.localeCompare(b.nome));
+      return items.sort((a, b) => a.nome.localeCompare(b.nome)).map((p) => redactParticipantContacts(session, p));
     },
     async get(session, id) {
       const store = getStore();
-      return scoped(session, store.participants).find((p) => p.id === id) ?? null;
+      const participant = scoped(session, store.participants).find((p) => p.id === id);
+      return participant ? redactParticipantContacts(session, participant) : null;
     },
     async create(session, input) {
       assertCan(session.perfil, "manage_participants");
@@ -1177,14 +1187,26 @@ export const mockRepository: Repository = {
       const spaces = store.spaces.filter((s) => s.companyId === companyId);
       const now = Date.now();
       const horizonDays = 30;
+      // Janela real de 30 dias: [now, horizonEnd]. Uma reserva sem limite
+      // superior (ex: dezembro do ano que vem) não pode contar como
+      // ocupação dos "próximos 30 dias" — só entra quem intersecta a
+      // janela, e a duração contabilizada é recortada à intersecção (uma
+      // reserva que começa antes de "now" e termina depois, ou começa
+      // dentro da janela e termina depois de horizonEnd, conta só a parte
+      // dela dentro da janela).
+      const horizonEnd = now + horizonDays * 24 * 3_600_000;
       const ocupacaoEspacos = spaces.map((s) => {
-        const relevant = reservations.filter(
-          (r) => r.spaceId === s.id && r.status !== "cancelada" && new Date(r.inicio).getTime() >= now,
-        );
-        const horasReservadas = relevant.reduce(
-          (sum, r) => sum + (new Date(r.fim).getTime() - new Date(r.inicio).getTime()) / 3_600_000,
-          0,
-        );
+        const relevant = reservations.filter((r) => {
+          if (r.spaceId !== s.id || r.status === "cancelada") return false;
+          const inicio = new Date(r.inicio).getTime();
+          const fim = new Date(r.fim).getTime();
+          return fim > now && inicio < horizonEnd;
+        });
+        const horasReservadas = relevant.reduce((sum, r) => {
+          const inicio = Math.max(new Date(r.inicio).getTime(), now);
+          const fim = Math.min(new Date(r.fim).getTime(), horizonEnd);
+          return sum + Math.max(0, fim - inicio) / 3_600_000;
+        }, 0);
         const horasDisponiveis = horizonDays * 10; // 10h úteis/dia, aproximação para o indicador
         return {
           spaceId: s.id,
@@ -1337,7 +1359,11 @@ export const mockRepository: Repository = {
       for (const r of store.reservations) {
         if (r.companyId !== companyId || !r.eventId || !openEventIds.has(r.eventId)) continue;
         if (r.updatedAt === r.createdAt) continue;
-        if (nowMs - new Date(r.updatedAt).getTime() > RECENCY_MS) continue;
+        // ageMs negativo = updatedAt no futuro (dado inconsistente, nunca
+        // deveria acontecer) — não é "alteração recente", é ruído; ambos os
+        // lados da janela são checados, não só o limite superior.
+        const ageMs = nowMs - new Date(r.updatedAt).getTime();
+        if (ageMs < 0 || ageMs > RECENCY_MS) continue;
         const event = eventById.get(r.eventId);
         if (!event) continue;
         push({
@@ -1355,7 +1381,8 @@ export const mockRepository: Repository = {
       // evento, statusAnterior null), que não é uma "mudança".
       for (const h of store.statusHistory) {
         if (h.companyId !== companyId || h.statusAnterior === null) continue;
-        if (nowMs - new Date(h.createdAt).getTime() > RECENCY_MS) continue;
+        const ageMs = nowMs - new Date(h.createdAt).getTime();
+        if (ageMs < 0 || ageMs > RECENCY_MS) continue;
         const event = eventById.get(h.eventId);
         if (!event) continue;
         push({

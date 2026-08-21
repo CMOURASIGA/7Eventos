@@ -183,7 +183,7 @@ export default async function AdvancedReportsPage() {
       </div>
 
       <Card>
-        <CardHeader title="Performance por período" description="Eventos agrupados pelo mês de criação." />
+        <CardHeader title="Performance por mês de cadastro" description="Eventos agrupados pelo mês em que foram criados no sistema." />
         {data.performancePorPeriodo.length === 0 ? (
           <EmptyState title="Nenhum evento cadastrado." />
         ) : (
