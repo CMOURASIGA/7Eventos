@@ -10,9 +10,13 @@ import type {
   EventEntity,
   EventSession,
   EventStatus,
+  EventSupplier,
+  EventTeamMember,
   Reservation,
   Space,
   StatusHistoryEntry,
+  Supplier,
+  SupplierStatus,
   User,
 } from "../domain/types";
 
@@ -45,6 +49,12 @@ export interface SpaceSearchFilters {
   nome?: string;
   status?: "ativo" | "inativo";
   capacidadeMinima?: number;
+}
+
+export interface SupplierSearchFilters {
+  nome?: string;
+  categoria?: string;
+  status?: SupplierStatus;
 }
 
 export interface ReservationSearchFilters {
@@ -212,6 +222,56 @@ export interface Repository {
       id: string,
       input: Partial<Omit<ChecklistItem, "id" | "companyId" | "eventId">>,
     ): Promise<ChecklistItem>;
+    remove(session: AuthSession, id: string): Promise<void>;
+  };
+
+  // Fornecedores (Fase 2) ---------------------------------------------------
+  suppliers: {
+    list(session: AuthSession, filters?: SupplierSearchFilters): Promise<Supplier[]>;
+    get(session: AuthSession, id: string): Promise<Supplier | null>;
+    create(
+      session: AuthSession,
+      input: Omit<Supplier, "id" | "companyId" | "createdAt" | "updatedAt">,
+    ): Promise<Supplier>;
+    update(
+      session: AuthSession,
+      id: string,
+      input: Partial<Omit<Supplier, "id" | "companyId">>,
+    ): Promise<Supplier>;
+    setStatus(
+      session: AuthSession,
+      id: string,
+      status: SupplierStatus,
+    ): Promise<Supplier>;
+  };
+
+  // Vínculo de fornecedores a eventos (Fase 2) -------------------------------
+  eventSuppliers: {
+    listByEvent(session: AuthSession, eventId: string): Promise<EventSupplier[]>;
+    create(
+      session: AuthSession,
+      input: Omit<EventSupplier, "id" | "companyId" | "createdAt" | "updatedAt">,
+    ): Promise<EventSupplier>;
+    update(
+      session: AuthSession,
+      id: string,
+      input: Partial<Omit<EventSupplier, "id" | "companyId" | "eventId" | "supplierId">>,
+    ): Promise<EventSupplier>;
+    remove(session: AuthSession, id: string): Promise<void>;
+  };
+
+  // Equipe do evento (Fase 2) ------------------------------------------------
+  team: {
+    listByEvent(session: AuthSession, eventId: string): Promise<EventTeamMember[]>;
+    create(
+      session: AuthSession,
+      input: Omit<EventTeamMember, "id" | "companyId" | "createdAt" | "updatedAt">,
+    ): Promise<EventTeamMember>;
+    update(
+      session: AuthSession,
+      id: string,
+      input: Partial<Omit<EventTeamMember, "id" | "companyId" | "eventId">>,
+    ): Promise<EventTeamMember>;
     remove(session: AuthSession, id: string): Promise<void>;
   };
 

@@ -113,4 +113,12 @@ export const ICONS: Record<string, (props?: SVGProps<SVGSVGElement>) => React.JS
       <path d="m8.5 12.5 2.3 2.3 4.7-4.8" />
     </svg>
   ),
+  suppliers: (p) => (
+    <svg {...common} {...p}>
+      <rect x="2.5" y="9.5" width="12" height="8" rx="1.2" />
+      <path d="M14.5 12h3.6l3.4 3v2.5a1 1 0 0 1-1 1h-2" />
+      <circle cx="7.5" cy="19.5" r="1.6" />
+      <circle cx="17" cy="19.5" r="1.6" />
+    </svg>
+  ),
 };

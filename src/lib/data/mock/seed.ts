@@ -7,9 +7,14 @@ import type {
   EventEntity,
   EventSession,
   EventStatus,
+  EventSupplier,
+  EventSupplierSituacao,
+  EventTeamMember,
   Reservation,
   Space,
   StatusHistoryEntry,
+  Supplier,
+  TeamMemberStatus,
   User,
 } from "@/lib/domain/types";
 import { calculateComplexity } from "@/lib/domain/complexity";
@@ -84,6 +89,9 @@ export interface SeedData {
   complexityAssessments: ComplexityAssessment[];
   statusHistory: StatusHistoryEntry[];
   auditLogs: AuditLog[];
+  suppliers: Supplier[];
+  eventSuppliers: EventSupplier[];
+  teamMembers: EventTeamMember[];
 }
 
 export function generateSeed(): SeedData {
@@ -351,8 +359,63 @@ const STATUS_CYCLE: EventStatus[] = [
   const complexityAssessments: ComplexityAssessment[] = [];
   const statusHistory: StatusHistoryEntry[] = [];
   const auditLogs: AuditLog[] = [];
+  const suppliers: Supplier[] = [];
+  const eventSuppliers: EventSupplier[] = [];
+  const teamMembers: EventTeamMember[] = [];
 
-  const seq = { event: 1, session: 1, reservation: 1, checklist: 1, budget: 1, complexity: 1, history: 1, audit: 1 };
+  const seq = {
+    event: 1,
+    session: 1,
+    reservation: 1,
+    checklist: 1,
+    budget: 1,
+    complexity: 1,
+    history: 1,
+    audit: 1,
+    supplier: 1,
+    eventSupplier: 1,
+    teamMember: 1,
+  };
+
+  // Catálogo de fornecedores por empresa (Fase 2).
+  const supplierTemplates: Record<string, { nome: string; categoria: string; servicos: string; contato: string }[]> = {
+    company_consult: [
+      { nome: "AV Prime Soluções Audiovisuais", categoria: "Audiovisual", servicos: "Projeção, som e iluminação de palco", contato: "contato@avprime.com.br" },
+      { nome: "Sabor & Cia Buffet Corporativo", categoria: "Buffet/Catering", servicos: "Coffee break, almoço executivo e coquetel", contato: "eventos@saborcia.com.br" },
+      { nome: "Cenário Decorações", categoria: "Decoração", servicos: "Cenografia, flores e ambientação", contato: "contato@cenariodecoracoes.com.br" },
+      { nome: "Vigilar Segurança Patrimonial", categoria: "Segurança", servicos: "Segurança de evento e controle de acesso", contato: "comercial@vigilar.com.br" },
+      { nome: "Rota Fácil Transportes", categoria: "Transporte", servicos: "Vans executivas e traslado de convidados", contato: "reservas@rotafacil.com.br" },
+      { nome: "Ana Beatriz Cerimonial", categoria: "Cerimonial", servicos: "Mestre de cerimônias e roteiro de evento", contato: "ana.beatriz@cerimonialab.com.br" },
+      { nome: "Foco Nítido Fotografia", categoria: "Fotografia/Vídeo", servicos: "Cobertura fotográfica e vídeo institucional", contato: "contato@foconitido.com.br" },
+      { nome: "Estrutura Total Locações", categoria: "Infraestrutura", servicos: "Tendas, gerador e mobiliário", contato: "orcamento@estruturatotal.com.br" },
+    ],
+    company_aurora: [
+      { nome: "Aurora Sound & Light", categoria: "Audiovisual", servicos: "Line array, telão LED e iluminação robótica", contato: "producao@auroraslight.com.br" },
+      { nome: "Delícias Live Catering", categoria: "Buffet/Catering", servicos: "Food trucks e open bar", contato: "contato@deliciaslive.com.br" },
+      { nome: "Backstage Segurança Eventos", categoria: "Segurança", servicos: "Segurança de público e brigada de incêndio", contato: "operacoes@backstageseguranca.com.br" },
+      { nome: "Lente Viva Produções", categoria: "Fotografia/Vídeo", servicos: "Transmissão ao vivo e cobertura multicâmera", contato: "contato@lenteviva.com.br" },
+      { nome: "Grade Cenografia", categoria: "Decoração", servicos: "Estruturas cenográficas e sinalização", contato: "comercial@gradecenografia.com.br" },
+    ],
+  };
+  for (const [companyId, templates] of Object.entries(supplierTemplates)) {
+    for (const t of templates) {
+      const inactive = rng() < 0.1;
+      suppliers.push({
+        id: uid("supplier", seq.supplier++),
+        companyId,
+        nome: t.nome,
+        documento: `${intBetween(10, 99)}.${intBetween(100, 999)}.${intBetween(100, 999)}/0001-${intBetween(10, 99)}`,
+        categoria: t.categoria,
+        contato: t.contato,
+        servicos: t.servicos,
+        status: inactive ? "inativo" : "ativo",
+        observacoes: inactive ? "Contrato encerrado — aguardando nova homologação." : undefined,
+        createdAt: nowIso(-intBetween(150, 350)),
+        updatedAt: nowIso(-intBetween(1, 60)),
+      });
+    }
+  }
+  const suppliersByCompany = (companyId: string) => suppliers.filter((s) => s.companyId === companyId && s.status === "ativo");
 
   const companyConfigs = [
     { companyId: "company_consult", managers: ["user_consult_gestor1", "user_consult_gestor2"], admin: "user_consult_admin", operators: ["user_consult_operador1", "user_consult_operador2"], count: 18 },
@@ -506,6 +569,63 @@ const STATUS_CYCLE: EventStatus[] = [
         });
       }
 
+      // Fornecedores vinculados ao evento (Fase 2) — eventos ainda em
+      // rascunho normalmente não têm fornecedor contratado.
+      const eventSupplierPool = suppliersByCompany(cfg.companyId);
+      if (eventSupplierPool.length > 0 && finalStatus !== "rascunho") {
+        const linked = pickMany(eventSupplierPool, intBetween(1, Math.min(3, eventSupplierPool.length)));
+        for (const supplier of linked) {
+          const situacao: EventSupplierSituacao =
+            finalStatus === "cancelado"
+              ? "cancelado"
+              : isPast
+                ? "concluido"
+                : pick(["previsto", "contratado", "confirmado"] as const);
+          const valorPrevisto = intBetween(2, 60) * 1000;
+          const contratado = situacao === "contratado" || situacao === "confirmado" || situacao === "concluido";
+          eventSuppliers.push({
+            id: uid("event_supplier", seq.eventSupplier++),
+            companyId: cfg.companyId,
+            eventId,
+            supplierId: supplier.id,
+            servico: supplier.servicos ?? supplier.categoria,
+            responsavelInternoId: responsavel,
+            valorPrevisto,
+            valorContratado: contratado ? Math.round(valorPrevisto * (0.9 + rng() * 0.2)) : undefined,
+            situacao,
+            dataInicio: inicio,
+            dataFim: fim,
+            createdAt: event.createdAt,
+            updatedAt: event.updatedAt,
+          });
+        }
+      }
+
+      // Equipe do evento (Fase 2)
+      const teamFuncoes = ["Coordenação geral", "Apoio operacional", "Recepção e credenciamento", "Suporte técnico", "Cerimonial"];
+      const teamPool = [...cfg.managers, ...cfg.operators].filter((u) => u !== responsavel);
+      const teamPicks = pickMany(teamPool, Math.min(intBetween(1, 3), teamPool.length));
+      for (const userId of teamPicks) {
+        const memberStatus: TeamMemberStatus =
+          finalStatus === "cancelado"
+            ? "cancelado"
+            : isPast
+              ? "concluido"
+              : pick(["convidado", "confirmado", "em_atividade"] as const);
+        teamMembers.push({
+          id: uid("team_member", seq.teamMember++),
+          companyId: cfg.companyId,
+          eventId,
+          userId,
+          funcao: pick(teamFuncoes),
+          responsabilidade: "Apoio à execução conforme cronograma do evento.",
+          escala: multiSessao ? "Conforme cronograma de sessões" : `${startHour}h às ${startHour + duracaoHoras}h`,
+          status: memberStatus,
+          createdAt: event.createdAt,
+          updatedAt: event.updatedAt,
+        });
+      }
+
       // Complexidade
       const factors = {
         publicoAlvo: intBetween(0, 3),
@@ -607,5 +727,8 @@ const STATUS_CYCLE: EventStatus[] = [
     complexityAssessments,
     statusHistory,
     auditLogs,
+    suppliers,
+    eventSuppliers,
+    teamMembers,
   };
 }

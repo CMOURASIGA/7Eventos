@@ -32,3 +32,18 @@ export const DEMANDANTES = [
   "Relações Institucionais",
   "Diretoria Financeira",
 ] as const;
+
+/** Fase 2 - categorias do catálogo de fornecedores. */
+export const CATEGORIAS_FORNECEDOR = [
+  "Audiovisual",
+  "Buffet/Catering",
+  "Decoração",
+  "Segurança",
+  "Transporte",
+  "Cerimonial",
+  "Limpeza",
+  "Fotografia/Vídeo",
+  "Brindes",
+  "Infraestrutura",
+  "Outros",
+] as const;

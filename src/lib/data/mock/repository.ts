@@ -5,8 +5,11 @@ import type {
   ComplexityAssessment,
   EventEntity,
   EventSession,
+  EventSupplier,
+  EventTeamMember,
   Reservation,
   Space,
+  Supplier,
   User,
 } from "@/lib/domain/types";
 import { EVENT_STATUS_LABELS, RESERVATION_STATUS_LABELS, ROLE_LABELS } from "@/lib/domain/types";
@@ -503,6 +506,136 @@ export const mockRepository: Repository = {
       const store = getStore();
       const companyId = requireCompany(session);
       store.checklistItems = store.checklistItems.filter((c) => !(c.id === id && c.companyId === companyId));
+    },
+  },
+
+  suppliers: {
+    async list(session, filters) {
+      const store = getStore();
+      let items = scoped(session, store.suppliers);
+      if (filters?.nome) items = items.filter((s) => s.nome.toLowerCase().includes(filters.nome!.toLowerCase()));
+      if (filters?.categoria) items = items.filter((s) => s.categoria === filters.categoria);
+      if (filters?.status) items = items.filter((s) => s.status === filters.status);
+      return items.sort((a, b) => a.nome.localeCompare(b.nome));
+    },
+    async get(session, id) {
+      const store = getStore();
+      return scoped(session, store.suppliers).find((s) => s.id === id) ?? null;
+    },
+    async create(session, input) {
+      assertCan(session.perfil, "manage_suppliers");
+      const store = getStore();
+      const companyId = requireCompany(session);
+      const supplier: Supplier = { id: nextId("supplier"), companyId, createdAt: nowIso(), updatedAt: nowIso(), ...input };
+      store.suppliers.push(supplier);
+      pushAudit(session, { acao: "criacao", entidade: "fornecedor", entidadeId: supplier.id, descricao: `Fornecedor "${supplier.nome}" cadastrado.` });
+      return supplier;
+    },
+    async update(session, id, input) {
+      assertCan(session.perfil, "manage_suppliers");
+      const store = getStore();
+      const supplier = scoped(session, store.suppliers).find((s) => s.id === id);
+      if (!supplier) throw new Error("Fornecedor não encontrado.");
+      Object.assign(supplier, input, { updatedAt: nowIso() });
+      pushAudit(session, { acao: "edicao", entidade: "fornecedor", entidadeId: supplier.id, descricao: `Fornecedor "${supplier.nome}" editado.` });
+      return supplier;
+    },
+    async setStatus(session, id, status) {
+      assertCan(session.perfil, "manage_suppliers");
+      const store = getStore();
+      const supplier = scoped(session, store.suppliers).find((s) => s.id === id);
+      if (!supplier) throw new Error("Fornecedor não encontrado.");
+      supplier.status = status;
+      supplier.updatedAt = nowIso();
+      pushAudit(session, {
+        acao: status === "inativo" ? "cancelamento" : "edicao",
+        entidade: "fornecedor",
+        entidadeId: supplier.id,
+        descricao: `Fornecedor "${supplier.nome}" marcado como ${status === "inativo" ? "inativo" : "ativo"}.`,
+      });
+      return supplier;
+    },
+  },
+
+  eventSuppliers: {
+    async listByEvent(session, eventId) {
+      const store = getStore();
+      const companyId = requireCompany(session);
+      return store.eventSuppliers
+        .filter((es) => es.eventId === eventId && es.companyId === companyId)
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    },
+    async create(session, input) {
+      assertCan(session.perfil, "manage_suppliers");
+      const store = getStore();
+      const companyId = requireCompany(session);
+      const link: EventSupplier = { id: nextId("event_supplier"), companyId, createdAt: nowIso(), updatedAt: nowIso(), ...input };
+      store.eventSuppliers.push(link);
+      const supplier = store.suppliers.find((s) => s.id === input.supplierId);
+      pushAudit(session, {
+        acao: "criacao",
+        entidade: "fornecedor_evento",
+        entidadeId: link.id,
+        descricao: `Fornecedor "${supplier?.nome ?? input.supplierId}" vinculado ao evento (${input.servico}).`,
+      });
+      return link;
+    },
+    async update(session, id, input) {
+      assertCan(session.perfil, "manage_suppliers");
+      const store = getStore();
+      const companyId = requireCompany(session);
+      const link = store.eventSuppliers.find((es) => es.id === id && es.companyId === companyId);
+      if (!link) throw new Error("Vínculo de fornecedor não encontrado.");
+      Object.assign(link, input, { updatedAt: nowIso() });
+      pushAudit(session, { acao: "edicao", entidade: "fornecedor_evento", entidadeId: link.id, descricao: "Vínculo de fornecedor atualizado." });
+      return link;
+    },
+    async remove(session, id) {
+      assertCan(session.perfil, "manage_suppliers");
+      const store = getStore();
+      const companyId = requireCompany(session);
+      store.eventSuppliers = store.eventSuppliers.filter((es) => !(es.id === id && es.companyId === companyId));
+    },
+  },
+
+  team: {
+    async listByEvent(session, eventId) {
+      const store = getStore();
+      const companyId = requireCompany(session);
+      return store.teamMembers
+        .filter((m) => m.eventId === eventId && m.companyId === companyId)
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    },
+    async create(session, input) {
+      assertCan(session.perfil, "manage_team");
+      const store = getStore();
+      const companyId = requireCompany(session);
+      const member: EventTeamMember = { id: nextId("team_member"), companyId, createdAt: nowIso(), updatedAt: nowIso(), ...input };
+      store.teamMembers.push(member);
+      const user = store.users.find((u) => u.id === input.userId);
+      pushAudit(session, {
+        acao: "criacao",
+        entidade: "equipe_evento",
+        entidadeId: member.id,
+        descricao: `${user?.nome ?? "Usuário"} adicionado à equipe do evento como ${input.funcao}.`,
+      });
+      return member;
+    },
+    async update(session, id, input) {
+      assertCan(session.perfil, "manage_team");
+      const store = getStore();
+      const companyId = requireCompany(session);
+      const member = store.teamMembers.find((m) => m.id === id && m.companyId === companyId);
+      if (!member) throw new Error("Membro de equipe não encontrado.");
+      Object.assign(member, input, { updatedAt: nowIso() });
+      pushAudit(session, { acao: "edicao", entidade: "equipe_evento", entidadeId: member.id, descricao: "Membro de equipe atualizado." });
+      return member;
+    },
+    async remove(session, id) {
+      assertCan(session.perfil, "manage_team");
+      const store = getStore();
+      const companyId = requireCompany(session);
+      store.teamMembers = store.teamMembers.filter((m) => !(m.id === id && m.companyId === companyId));
     },
   },
 
