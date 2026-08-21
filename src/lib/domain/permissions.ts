@@ -34,6 +34,7 @@ export type Capability =
   | "manage_participants"
   | "manage_registrations"
   | "manage_risks"
+  | "view_participant_contacts"
   | "manage_platform"; // superadmin apenas
 
 const MATRIX: Record<Role, Capability[]> = {
@@ -59,6 +60,7 @@ const MATRIX: Record<Role, Capability[]> = {
     "manage_participants",
     "manage_registrations",
     "manage_risks",
+    "view_participant_contacts",
   ],
   gestor_eventos: [
     "manage_spaces",
@@ -78,6 +80,7 @@ const MATRIX: Record<Role, Capability[]> = {
     "manage_participants",
     "manage_registrations",
     "manage_risks",
+    "view_participant_contacts",
   ],
   // Pode criar eventos (sempre nascem em rascunho) e organizar reservas/
   // checklist/cronograma/documentos/credenciamento do dia a dia, mas
@@ -85,7 +88,9 @@ const MATRIX: Record<Role, Capability[]> = {
   // financeiros seguem exclusivos de Gestor/Admin. Acessa relatórios
   // operacionais (view_reports), mas não view_financials.
   // manage_registrations inclui credenciamento (check-in) — trabalho de
-  // campo tipicamente feito pelo Operador na entrada do evento.
+  // campo tipicamente feito pelo Operador na entrada do evento, por isso
+  // também mantém view_participant_contacts (precisa de telefone/e-mail
+  // para localizar e confirmar quem está chegando).
   operador: [
     "view_event",
     "create_event",
@@ -96,8 +101,14 @@ const MATRIX: Record<Role, Capability[]> = {
     "manage_participants",
     "manage_registrations",
     "manage_risks",
+    "view_participant_contacts",
     "view_reports",
   ],
+  // Consulta enxerga o catálogo de participantes (nome, organização,
+  // categoria, status) e o histórico de inscrição/presença, mas não
+  // e-mail/telefone/observações — dados de contato ficam restritos a
+  // quem efetivamente opera o relacionamento com o participante
+  // (Admin/Gestor/Operador, via view_participant_contacts).
   consulta: ["view_event", "view_reports"],
 };
 

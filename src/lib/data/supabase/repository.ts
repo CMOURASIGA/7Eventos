@@ -4,6 +4,7 @@ import type {
   EventSession,
   EventStatus,
   NotificationItem,
+  Participant,
   Reservation,
 } from "@/lib/domain/types";
 import { EVENT_STATUS_LABELS, RESERVATION_STATUS_LABELS, ROLE_LABELS } from "@/lib/domain/types";
@@ -68,6 +69,14 @@ function requireCompany(session: AuthSession): string {
     throw new Error("Sessão sem empresa vinculada não pode operar dados operacionais.");
   }
   return session.companyId;
+}
+
+// Quem não tem "view_participant_contacts" (perfil Consulta) enxerga o
+// catálogo de participantes sem e-mail/telefone/observações — mesma
+// proteção do mock/repository.ts, na camada de dados, não só na UI.
+function redactParticipantContacts(session: AuthSession, participant: Participant): Participant {
+  if (can(session.perfil, "view_participant_contacts")) return participant;
+  return { ...participant, email: undefined, telefone: undefined, observacoes: undefined };
 }
 
 async function recordAudit(
@@ -964,7 +973,7 @@ export const supabaseRepository: Repository = {
       if (filters?.status) query = query.eq("status", filters.status);
       const { data, error } = await query.order("nome");
       if (error) throw new Error(error.message);
-      return (data ?? []).map(mapParticipant);
+      return (data ?? []).map(mapParticipant).map((p) => redactParticipantContacts(session, p));
     },
     async get(session, id) {
       const db = getSupabaseServiceClient();
@@ -975,7 +984,7 @@ export const supabaseRepository: Repository = {
         .eq("company_id", requireCompany(session))
         .maybeSingle();
       if (error) throw new Error(error.message);
-      return data ? mapParticipant(data) : null;
+      return data ? redactParticipantContacts(session, mapParticipant(data)) : null;
     },
     async create(session, input) {
       assertCan(session.perfil, "manage_participants");
@@ -1780,14 +1789,23 @@ export const supabaseRepository: Repository = {
       const spaces = (spaceRows ?? []).map(mapSpace);
       const now = Date.now();
       const horizonDays = 30;
+      // Janela real de 30 dias: [now, horizonEnd] — mesma correção do
+      // mock/repository.ts. Uma reserva sem limite superior não pode
+      // contar como ocupação dos "próximos 30 dias"; a duração
+      // contabilizada é recortada à intersecção com a janela.
+      const horizonEnd = now + horizonDays * 24 * 3_600_000;
       const ocupacaoEspacos = spaces.map((s) => {
-        const relevant = reservations.filter(
-          (r: Reservation) => r.spaceId === s.id && r.status !== "cancelada" && new Date(r.inicio).getTime() >= now,
-        );
-        const horasReservadas = relevant.reduce(
-          (sum: number, r: Reservation) => sum + (new Date(r.fim).getTime() - new Date(r.inicio).getTime()) / 3_600_000,
-          0,
-        );
+        const relevant = reservations.filter((r: Reservation) => {
+          if (r.spaceId !== s.id || r.status === "cancelada") return false;
+          const inicio = new Date(r.inicio).getTime();
+          const fim = new Date(r.fim).getTime();
+          return fim > now && inicio < horizonEnd;
+        });
+        const horasReservadas = relevant.reduce((sum: number, r: Reservation) => {
+          const inicio = Math.max(new Date(r.inicio).getTime(), now);
+          const fim = Math.min(new Date(r.fim).getTime(), horizonEnd);
+          return sum + Math.max(0, fim - inicio) / 3_600_000;
+        }, 0);
         const horasDisponiveis = horizonDays * 10;
         return { spaceId: s.id, nome: s.nome, percentual: Math.min(100, Math.round((horasReservadas / horasDisponiveis) * 100)) };
       });
@@ -1952,7 +1970,11 @@ export const supabaseRepository: Repository = {
       for (const row of (reservationRows ?? []).map(mapReservation)) {
         if (!row.eventId || !openEventIds.has(row.eventId)) continue;
         if (row.updatedAt === row.createdAt) continue;
-        if (nowMs - new Date(row.updatedAt).getTime() > RECENCY_MS) continue;
+        // ageMs negativo = updatedAt no futuro (dado inconsistente, nunca
+        // deveria acontecer) — não é "alteração recente", é ruído; ambos os
+        // lados da janela são checados, não só o limite superior.
+        const ageMs = nowMs - new Date(row.updatedAt).getTime();
+        if (ageMs < 0 || ageMs > RECENCY_MS) continue;
         const event = eventById.get(row.eventId);
         if (!event) continue;
         push({
@@ -1976,7 +1998,8 @@ export const supabaseRepository: Repository = {
       if (historyError) throw new Error(historyError.message);
       for (const row of (historyRows ?? []).map(mapStatusHistory)) {
         if (row.statusAnterior === null) continue;
-        if (nowMs - new Date(row.createdAt).getTime() > RECENCY_MS) continue;
+        const ageMs = nowMs - new Date(row.createdAt).getTime();
+        if (ageMs < 0 || ageMs > RECENCY_MS) continue;
         const event = eventById.get(row.eventId);
         if (!event) continue;
         push({

@@ -464,7 +464,10 @@ export interface Participant {
   id: string;
   companyId: string;
   nome: string;
-  email: string;
+  // Opcional porque a camada de dados oculta email/telefone/observacoes
+  // de quem não tem "view_participant_contacts" (ex: perfil Consulta) —
+  // não porque o cadastro em si permita ficar sem e-mail.
+  email?: string;
   telefone?: string;
   organizacao?: string;
   categoria?: string;

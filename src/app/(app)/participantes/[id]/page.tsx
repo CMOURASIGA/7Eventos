@@ -25,6 +25,11 @@ export default async function ParticipantDetailPage({
   if (!participant) notFound();
 
   const canManage = can(session.perfil, "manage_participants");
+  // E-mail/telefone/observações são dados de contato — perfis sem
+  // "view_participant_contacts" (ex: Consulta) nem chegam a recebê-los da
+  // camada de dados (redactParticipantContacts), então aqui é só uma
+  // questão de não renderizar campos vazios/desabilitados sem explicação.
+  const canViewContacts = can(session.perfil, "view_participant_contacts");
   const updateAction = updateParticipant.bind(null, id);
 
   return (
@@ -40,7 +45,7 @@ export default async function ParticipantDetailPage({
             </Badge>
           </span>
         }
-        description={participant.email}
+        description={participant.email ?? participant.organizacao}
         actions={
           canManage && (
             <ConfirmButton
@@ -72,14 +77,18 @@ export default async function ParticipantDetailPage({
             <Field label="Nome" htmlFor="nome" required>
               <Input id="nome" name="nome" defaultValue={participant.nome} required disabled={!canManage} />
             </Field>
-            <Field label="E-mail" htmlFor="email" required>
-              <Input id="email" name="email" type="email" defaultValue={participant.email} required disabled={!canManage} />
-            </Field>
+            {canViewContacts && (
+              <Field label="E-mail" htmlFor="email" required>
+                <Input id="email" name="email" type="email" defaultValue={participant.email} required disabled={!canManage} />
+              </Field>
+            )}
           </div>
           <div className="grid sm:grid-cols-2 gap-4">
-            <Field label="Telefone" htmlFor="telefone">
-              <Input id="telefone" name="telefone" defaultValue={participant.telefone} disabled={!canManage} />
-            </Field>
+            {canViewContacts && (
+              <Field label="Telefone" htmlFor="telefone">
+                <Input id="telefone" name="telefone" defaultValue={participant.telefone} disabled={!canManage} />
+              </Field>
+            )}
             <Field label="Categoria" htmlFor="categoria">
               <Select id="categoria" name="categoria" defaultValue={participant.categoria ?? ""} disabled={!canManage}>
                 <option value="">Nenhuma</option>
@@ -94,9 +103,11 @@ export default async function ParticipantDetailPage({
           <Field label="Organização" htmlFor="organizacao">
             <Input id="organizacao" name="organizacao" defaultValue={participant.organizacao} disabled={!canManage} />
           </Field>
-          <Field label="Observações" htmlFor="observacoes">
-            <Textarea id="observacoes" name="observacoes" defaultValue={participant.observacoes} disabled={!canManage} />
-          </Field>
+          {canViewContacts && (
+            <Field label="Observações" htmlFor="observacoes">
+              <Textarea id="observacoes" name="observacoes" defaultValue={participant.observacoes} disabled={!canManage} />
+            </Field>
+          )}
 
           {canManage && (
             <div className="flex justify-end pt-2">

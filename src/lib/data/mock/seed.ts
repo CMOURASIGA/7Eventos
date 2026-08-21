@@ -551,12 +551,19 @@ const STATUS_CYCLE: EventStatus[] = [
         previstoOrcamento,
         frequencia: multiSessao ? pick(["diario", "semanal"]) : "unico",
         createdBy: responsavel,
-        createdAt: isoAt(dayOffset - intBetween(20, 90), 10),
+        // O registro em si nunca é criado no futuro, mesmo quando o evento
+        // acontecerá daqui a semanas/meses (dayOffset > 0): quem cria o
+        // evento hoje planeja para uma data futura, não "viaja no tempo".
+        // Para eventos passados, a criação continua ancorada antes da data
+        // do evento (dayOffset - N), que já é necessariamente <= hoje.
+        createdAt: isoAt(isPast ? dayOffset - intBetween(20, 90) : -intBetween(5, 60), 10),
         updatedBy: pick([responsavel, cfg.admin]),
         // A última atualização nunca é anterior à criação nem posterior a
-        // hoje: eventos passados foram atualizados por último logo após
-        // acontecerem; eventos futuros, pouco antes da data prevista.
-        updatedAt: isoAt(isPast ? Math.min(dayOffset + intBetween(0, 3), 0) : dayOffset - intBetween(1, 10), 14),
+        // hoje (dayOffset 0): eventos passados foram atualizados por último
+        // logo após acontecerem; eventos futuros, recentemente (quem
+        // planeja segue mexendo no cadastro conforme a data se aproxima,
+        // mas o registro em si não pode ter sido tocado no futuro).
+        updatedAt: isoAt(isPast ? Math.min(dayOffset + intBetween(0, 3), 0) : -intBetween(0, 4), 14),
       };
       events.push(event);
 
@@ -573,9 +580,14 @@ const STATUS_CYCLE: EventStatus[] = [
         });
       }
 
-      // Histórico de status
+      // Histórico de status — cada transição já aconteceu no sistema, nunca
+      // no futuro, mesmo quando o evento em si (dayOffset) ainda vai
+      // ocorrer: para eventos futuros os passos são ancorados a "hoje"
+      // (offset negativo), não à data do evento.
       const historySteps = STATUS_CYCLE.slice(0, STATUS_CYCLE.indexOf(finalStatus) + 1);
       historySteps.forEach((st, idx) => {
+        const stepsAgo = historySteps.length - idx;
+        const stepOffset = isPast ? dayOffset - stepsAgo * 4 : -stepsAgo * intBetween(2, 5);
         statusHistory.push({
           id: uid("history", seq.history++),
           companyId: cfg.companyId,
@@ -583,7 +595,7 @@ const STATUS_CYCLE: EventStatus[] = [
           statusAnterior: idx === 0 ? null : historySteps[idx - 1],
           statusNovo: st,
           userId: responsavel,
-          createdAt: isoAt(dayOffset - (historySteps.length - idx) * 4, 11),
+          createdAt: isoAt(stepOffset, 11),
         });
       });
 
