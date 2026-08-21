@@ -1402,6 +1402,11 @@ export const supabaseRepository: Repository = {
 
   budget: {
     async getByEvent(session, eventId) {
+      // Valores financeiros só podem ser lidos por quem tem
+      // "view_financials". O cliente de serviço ignora RLS, então essa
+      // checagem precisa acontecer aqui — a UI só evita chamar isto
+      // para outros perfis, mas isso não protege uma chamada direta.
+      assertCan(session.perfil, "view_financials");
       const db = getSupabaseServiceClient();
       const { data, error } = await db
         .from("budgets")
@@ -1441,6 +1446,9 @@ export const supabaseRepository: Repository = {
 
   budgetItems: {
     async listByEvent(session, eventId) {
+      // Mesma proteção de budget.getByEvent — itens de orçamento também
+      // são valor financeiro, atrás de "view_financials".
+      assertCan(session.perfil, "view_financials");
       const db = getSupabaseServiceClient();
       await assertEventInCompany(session, eventId);
       const { data, error } = await db
