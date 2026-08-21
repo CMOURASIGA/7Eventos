@@ -7,6 +7,7 @@ import type {
   EventDocument,
   EventEntity,
   EventRegistration,
+  EventRisk,
   EventSession,
   EventSupplier,
   EventTeamMember,
@@ -1065,6 +1066,51 @@ export const mockRepository: Repository = {
         descricao: `Complexidade recalculada: ${COMPLEXITY_LEVEL_LABELS[assessment.nivel]} (pontuação ${assessment.pontuacao}).`,
       });
       return assessment;
+    },
+  },
+
+  risks: {
+    async listByEvent(session, eventId) {
+      const store = getStore();
+      const companyId = requireCompany(session);
+      return store.eventRisks
+        .filter((r) => r.eventId === eventId && r.companyId === companyId)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    },
+    async create(session, input) {
+      assertCan(session.perfil, "manage_risks");
+      const store = getStore();
+      const companyId = requireCompany(session);
+      const event = store.events.find((e) => e.id === input.eventId && e.companyId === companyId);
+      if (!event) throw new Error("Evento não encontrado.");
+      if (input.responsavelId) {
+        const responsavel = store.users.find((u) => u.id === input.responsavelId && u.companyId === companyId);
+        if (!responsavel) throw new Error("Responsável inválido para esta empresa.");
+      }
+      const risk: EventRisk = { id: nextId("risk"), companyId, createdAt: nowIso(), updatedAt: nowIso(), ...input };
+      store.eventRisks.push(risk);
+      pushAudit(session, { acao: "criacao", entidade: "risco", entidadeId: risk.id, descricao: `Risco "${risk.titulo}" registrado.` });
+      return risk;
+    },
+    async update(session, id, input) {
+      assertCan(session.perfil, "manage_risks");
+      const store = getStore();
+      const companyId = requireCompany(session);
+      const risk = store.eventRisks.find((r) => r.id === id && r.companyId === companyId);
+      if (!risk) throw new Error("Risco não encontrado.");
+      if (input.responsavelId) {
+        const responsavel = store.users.find((u) => u.id === input.responsavelId && u.companyId === companyId);
+        if (!responsavel) throw new Error("Responsável inválido para esta empresa.");
+      }
+      Object.assign(risk, input, { updatedAt: nowIso() });
+      pushAudit(session, { acao: "edicao", entidade: "risco", entidadeId: risk.id, descricao: `Risco "${risk.titulo}" atualizado.` });
+      return risk;
+    },
+    async remove(session, id) {
+      assertCan(session.perfil, "manage_risks");
+      const store = getStore();
+      const companyId = requireCompany(session);
+      store.eventRisks = store.eventRisks.filter((r) => !(r.id === id && r.companyId === companyId));
     },
   },
 

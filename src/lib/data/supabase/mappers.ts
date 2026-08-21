@@ -8,6 +8,7 @@ import type {
   EventDocument,
   EventEntity,
   EventRegistration,
+  EventRisk,
   EventSession,
   EventSupplier,
   EventTeamMember,
@@ -285,6 +286,22 @@ export function mapScheduleItem(r: Row): ScheduleItem {
     prioridade: r.prioridade,
     status: r.status,
     observacao: r.observacao ?? undefined,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export function mapEventRisk(r: Row): EventRisk {
+  return {
+    id: r.id,
+    companyId: r.company_id,
+    eventId: r.event_id,
+    titulo: r.titulo,
+    descricao: r.descricao ?? undefined,
+    severidade: r.severidade,
+    status: r.status,
+    responsavelId: r.responsavel_id ?? undefined,
+    planoMitigacao: r.plano_mitigacao ?? undefined,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };

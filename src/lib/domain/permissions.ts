@@ -33,6 +33,7 @@ export type Capability =
   | "manage_documents"
   | "manage_participants"
   | "manage_registrations"
+  | "manage_risks"
   | "manage_platform"; // superadmin apenas
 
 const MATRIX: Record<Role, Capability[]> = {
@@ -57,6 +58,7 @@ const MATRIX: Record<Role, Capability[]> = {
     "manage_documents",
     "manage_participants",
     "manage_registrations",
+    "manage_risks",
   ],
   gestor_eventos: [
     "manage_spaces",
@@ -75,6 +77,7 @@ const MATRIX: Record<Role, Capability[]> = {
     "manage_documents",
     "manage_participants",
     "manage_registrations",
+    "manage_risks",
   ],
   // Pode criar eventos (sempre nascem em rascunho) e organizar reservas/
   // checklist/cronograma/documentos/credenciamento do dia a dia, mas
@@ -92,6 +95,7 @@ const MATRIX: Record<Role, Capability[]> = {
     "manage_documents",
     "manage_participants",
     "manage_registrations",
+    "manage_risks",
     "view_reports",
   ],
   consulta: ["view_event", "view_reports"],
