@@ -23,12 +23,21 @@ import { assertCan, assertCanCreateEvent, can, PermissionError } from "@/lib/dom
 import { checkAvailability } from "@/lib/domain/availability";
 import { calculateComplexity, COMPLEXITY_LEVEL_LABELS } from "@/lib/domain/complexity";
 import type {
+  AdvancedReportsData,
+  AttendanceSummary,
+  ChecklistComplianceSummary,
   DashboardData,
   DashboardPeriod,
+  EventHistoryRow,
   EventSearchFilters,
+  OccupancyRow,
+  PeriodPerformanceRow,
+  PrevistoRealizadoRow,
   Repository,
   ReservationSearchFilters,
+  ScheduleComplianceSummary,
   SpaceSearchFilters,
+  SupplierPerformanceRow,
 } from "../repository";
 import { getStore, nextId } from "./store";
 
@@ -1350,6 +1359,140 @@ export const mockRepository: Repository = {
       }
 
       return items.sort((a, b) => b.referenceAt.localeCompare(a.referenceAt));
+    },
+  },
+
+  reports: {
+    async getAdvanced(session): Promise<AdvancedReportsData> {
+      const store = getStore();
+      const companyId = requireCompany(session);
+      // Previsto x realizado e o valor contratado por fornecedor só são
+      // computados para quem tem "view_financials" — mesma proteção de
+      // budget.getByEvent/budgetItems.listByEvent (fatia 4a): a consulta
+      // nem roda para os demais perfis.
+      const canFinancials = can(session.perfil, "view_financials");
+      const events = scoped(session, store.events);
+
+      // 1) Previsto x realizado
+      let previstoRealizado: PrevistoRealizadoRow[] = [];
+      if (canFinancials) {
+        previstoRealizado = events
+          .map((e): PrevistoRealizadoRow | null => {
+            const budget = store.budgets.find((b) => b.eventId === e.id && b.companyId === companyId);
+            if (!budget) return null;
+            const items = store.budgetItems.filter(
+              (i) => i.eventId === e.id && i.companyId === companyId && i.status !== "cancelado",
+            );
+            const comprometido = items.reduce((sum, i) => sum + (i.valorContratado ?? 0), 0);
+            const realizado = items.reduce((sum, i) => sum + (i.valorRealizado ?? 0), 0);
+            return { eventId: e.id, eventTitulo: e.titulo, previsto: budget.valorPrevisto, comprometido, realizado };
+          })
+          .filter((r): r is PrevistoRealizadoRow => r !== null)
+          .sort((a, b) => b.realizado - a.realizado);
+      }
+
+      // 2) Fornecedores — contagem de vínculos é visível a quem tem
+      // "view_reports" (todos os perfis operacionais); valor contratado
+      // total só para quem tem "view_financials".
+      const eventSuppliersAll = scoped(session, store.eventSuppliers);
+      const fornecedores: SupplierPerformanceRow[] = scoped(session, store.suppliers)
+        .map((s): SupplierPerformanceRow | null => {
+          const links = eventSuppliersAll.filter((es) => es.supplierId === s.id);
+          if (links.length === 0) return null;
+          return {
+            supplierId: s.id,
+            supplierNome: s.nome,
+            categoria: s.categoria,
+            eventosVinculados: links.length,
+            valorContratado: canFinancials ? links.reduce((sum, l) => sum + (l.valorContratado ?? 0), 0) : undefined,
+          };
+        })
+        .filter((r): r is SupplierPerformanceRow => r !== null)
+        .sort((a, b) => b.eventosVinculados - a.eventosVinculados);
+
+      // 3) Presença (confirmados x presentes x ausentes)
+      const confirmedRegs = scoped(session, store.registrations).filter((r) => r.status === "confirmada");
+      const presentes = confirmedRegs.filter((r) => r.checkInAt).length;
+      const presenca: AttendanceSummary = {
+        totalConfirmados: confirmedRegs.length,
+        totalPresentes: presentes,
+        totalAusentes: confirmedRegs.length - presentes,
+        taxaPresencaPct: confirmedRegs.length > 0 ? (presentes / confirmedRegs.length) * 100 : null,
+      };
+
+      // 4) Ocupação — reaproveita o mesmo cálculo já usado no dashboard
+      // (mesma janela de 30 dias), em vez de duplicar a lógica.
+      const dashboardData = await mockRepository.dashboard.get(session);
+      const ocupacao: OccupancyRow[] = dashboardData.ocupacaoEspacos.map((o) => ({
+        spaceId: o.spaceId,
+        spaceNome: o.nome,
+        percentual: o.percentual,
+      }));
+
+      // 5) Cumprimento do cronograma
+      const activeSchedule = scoped(session, store.scheduleItems).filter((s) => s.status !== "cancelado");
+      const scheduleNowMs = Date.now();
+      const concluidasSchedule = activeSchedule.filter((s) => s.status === "concluido").length;
+      const atrasadasSchedule = activeSchedule.filter(
+        (s) => s.status !== "concluido" && new Date(s.fim).getTime() < scheduleNowMs,
+      ).length;
+      const cronograma: ScheduleComplianceSummary = {
+        totalAtividades: activeSchedule.length,
+        concluidas: concluidasSchedule,
+        atrasadas: atrasadasSchedule,
+        taxaConclusaoPct: activeSchedule.length > 0 ? (concluidasSchedule / activeSchedule.length) * 100 : null,
+      };
+
+      // 6) Conclusão de checklist
+      const activeChecklist = scoped(session, store.checklistItems).filter((c) => c.status !== "cancelado");
+      const concluidosChecklist = activeChecklist.filter((c) => c.status === "concluido").length;
+      const checklist: ChecklistComplianceSummary = {
+        totalItens: activeChecklist.length,
+        concluidos: concluidosChecklist,
+        taxaConclusaoPct: activeChecklist.length > 0 ? (concluidosChecklist / activeChecklist.length) * 100 : null,
+      };
+
+      // 7) Performance por período (mês de criação do evento)
+      const periodMap = new Map<string, { total: number; concluidos: number; cancelados: number }>();
+      for (const e of events) {
+        const periodo = e.createdAt.slice(0, 7);
+        const entry = periodMap.get(periodo) ?? { total: 0, concluidos: 0, cancelados: 0 };
+        entry.total += 1;
+        if (e.status === "concluido") entry.concluidos += 1;
+        if (e.status === "cancelado") entry.cancelados += 1;
+        periodMap.set(periodo, entry);
+      }
+      const performancePorPeriodo: PeriodPerformanceRow[] = Array.from(periodMap.entries())
+        .map(([periodo, v]) => ({ periodo, totalEventos: v.total, concluidos: v.concluidos, cancelados: v.cancelados }))
+        .sort((a, b) => b.periodo.localeCompare(a.periodo));
+
+      // 8) Histórico de eventos
+      const historyCountByEvent = new Map<string, number>();
+      for (const h of store.statusHistory) {
+        if (h.companyId !== companyId) continue;
+        historyCountByEvent.set(h.eventId, (historyCountByEvent.get(h.eventId) ?? 0) + 1);
+      }
+      const historicoEventos: EventHistoryRow[] = events
+        .map((e) => ({
+          eventId: e.id,
+          eventTitulo: e.titulo,
+          status: e.status,
+          createdAt: e.createdAt,
+          updatedAt: e.updatedAt,
+          mudancasDeStatus: historyCountByEvent.get(e.id) ?? 0,
+        }))
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+
+      return {
+        previstoRealizado,
+        fornecedores,
+        presenca,
+        ocupacao,
+        cronograma,
+        checklist,
+        performancePorPeriodo,
+        historicoEventos,
+      };
     },
   },
 };

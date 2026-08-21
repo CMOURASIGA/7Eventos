@@ -10,7 +10,19 @@ import { EVENT_STATUS_LABELS, RESERVATION_STATUS_LABELS, ROLE_LABELS } from "@/l
 import { assertCan, assertCanCreateEvent, can, PermissionError } from "@/lib/domain/permissions";
 import { checkAvailability } from "@/lib/domain/availability";
 import { calculateComplexity, COMPLEXITY_LEVEL_LABELS } from "@/lib/domain/complexity";
-import type { DashboardData, Repository } from "../repository";
+import type {
+  AdvancedReportsData,
+  AttendanceSummary,
+  ChecklistComplianceSummary,
+  DashboardData,
+  EventHistoryRow,
+  OccupancyRow,
+  PeriodPerformanceRow,
+  PrevistoRealizadoRow,
+  Repository,
+  ScheduleComplianceSummary,
+  SupplierPerformanceRow,
+} from "../repository";
 import { getSupabaseServiceClient } from "./client";
 import {
   eventToRow,
@@ -1934,6 +1946,208 @@ export const supabaseRepository: Repository = {
       }
 
       return items.sort((a, b) => b.referenceAt.localeCompare(a.referenceAt));
+    },
+  },
+
+  reports: {
+    async getAdvanced(session): Promise<AdvancedReportsData> {
+      const companyId = requireCompany(session);
+      const db = getSupabaseServiceClient();
+      // Previsto x realizado e o valor contratado por fornecedor só são
+      // computados para quem tem "view_financials" — mesma proteção de
+      // budget.getByEvent/budgetItems.listByEvent (fatia 4a): a consulta
+      // nem roda para os demais perfis.
+      const canFinancials = can(session.perfil, "view_financials");
+
+      const { data: eventRows, error: eventsError } = await db.from("events").select("*").eq("company_id", companyId);
+      if (eventsError) throw new Error(eventsError.message);
+      const events = (eventRows ?? []).map(mapEvent);
+
+      // 1) Previsto x realizado
+      let previstoRealizado: PrevistoRealizadoRow[] = [];
+      if (canFinancials) {
+        const { data: budgetRows, error: budgetsError } = await db.from("budgets").select("*").eq("company_id", companyId);
+        if (budgetsError) throw new Error(budgetsError.message);
+        const { data: budgetItemRows, error: budgetItemsError } = await db
+          .from("budget_items")
+          .select("*")
+          .eq("company_id", companyId);
+        if (budgetItemsError) throw new Error(budgetItemsError.message);
+        const activeItemsByEvent = new Map<string, ReturnType<typeof mapBudgetItem>[]>();
+        for (const item of (budgetItemRows ?? []).map(mapBudgetItem)) {
+          if (item.status === "cancelado") continue;
+          const list = activeItemsByEvent.get(item.eventId) ?? [];
+          list.push(item);
+          activeItemsByEvent.set(item.eventId, list);
+        }
+        const eventTituloById = new Map(events.map((e) => [e.id, e.titulo]));
+        previstoRealizado = (budgetRows ?? [])
+          .map(mapBudget)
+          .map((budget): PrevistoRealizadoRow | null => {
+            const titulo = eventTituloById.get(budget.eventId);
+            if (!titulo) return null;
+            const items = activeItemsByEvent.get(budget.eventId) ?? [];
+            const comprometido = items.reduce((sum, i) => sum + (i.valorContratado ?? 0), 0);
+            const realizado = items.reduce((sum, i) => sum + (i.valorRealizado ?? 0), 0);
+            return { eventId: budget.eventId, eventTitulo: titulo, previsto: budget.valorPrevisto, comprometido, realizado };
+          })
+          .filter((r): r is PrevistoRealizadoRow => r !== null)
+          .sort((a, b) => b.realizado - a.realizado);
+      }
+
+      // 2) Fornecedores — contagem de vínculos é visível a quem tem
+      // "view_reports" (todos os perfis operacionais); valor contratado
+      // total só para quem tem "view_financials".
+      const { data: supplierRows, error: suppliersError } = await db.from("suppliers").select("*").eq("company_id", companyId);
+      if (suppliersError) throw new Error(suppliersError.message);
+      const { data: eventSupplierRows, error: eventSuppliersError } = await db
+        .from("event_suppliers")
+        .select("id, supplier_id")
+        .eq("company_id", companyId);
+      if (eventSuppliersError) throw new Error(eventSuppliersError.message);
+      const linksBySupplier = new Map<string, string[]>();
+      for (const row of eventSupplierRows ?? []) {
+        const list = linksBySupplier.get(row.supplier_id) ?? [];
+        list.push(row.id);
+        linksBySupplier.set(row.supplier_id, list);
+      }
+      let valorContratadoByLinkId = new Map<string, number>();
+      if (canFinancials && (eventSupplierRows ?? []).length > 0) {
+        const { data: financialRows, error: financialsError } = await db
+          .from("event_supplier_financials")
+          .select("event_supplier_id, valor_contratado")
+          .eq("company_id", companyId);
+        if (financialsError) throw new Error(financialsError.message);
+        valorContratadoByLinkId = new Map(
+          (financialRows ?? []).map((f: { event_supplier_id: string; valor_contratado: number | null }) => [
+            f.event_supplier_id,
+            Number(f.valor_contratado ?? 0),
+          ]),
+        );
+      }
+      const fornecedores: SupplierPerformanceRow[] = (supplierRows ?? [])
+        .map(mapSupplier)
+        .map((s): SupplierPerformanceRow | null => {
+          const linkIds = linksBySupplier.get(s.id) ?? [];
+          if (linkIds.length === 0) return null;
+          return {
+            supplierId: s.id,
+            supplierNome: s.nome,
+            categoria: s.categoria,
+            eventosVinculados: linkIds.length,
+            valorContratado: canFinancials
+              ? linkIds.reduce((sum, id) => sum + (valorContratadoByLinkId.get(id) ?? 0), 0)
+              : undefined,
+          };
+        })
+        .filter((r): r is SupplierPerformanceRow => r !== null)
+        .sort((a, b) => b.eventosVinculados - a.eventosVinculados);
+
+      // 3) Presença (confirmados x presentes x ausentes)
+      const { data: registrationRows, error: registrationsError } = await db
+        .from("event_registrations")
+        .select("status, check_in_at")
+        .eq("company_id", companyId)
+        .eq("status", "confirmada");
+      if (registrationsError) throw new Error(registrationsError.message);
+      const confirmedRegs = registrationRows ?? [];
+      const presentes = confirmedRegs.filter((r: { check_in_at: string | null }) => r.check_in_at).length;
+      const presenca: AttendanceSummary = {
+        totalConfirmados: confirmedRegs.length,
+        totalPresentes: presentes,
+        totalAusentes: confirmedRegs.length - presentes,
+        taxaPresencaPct: confirmedRegs.length > 0 ? (presentes / confirmedRegs.length) * 100 : null,
+      };
+
+      // 4) Ocupação — reaproveita o mesmo cálculo já usado no dashboard
+      // (mesma janela de 30 dias), em vez de duplicar a lógica.
+      const dashboardData = await supabaseRepository.dashboard.get(session);
+      const ocupacao: OccupancyRow[] = dashboardData.ocupacaoEspacos.map((o) => ({
+        spaceId: o.spaceId,
+        spaceNome: o.nome,
+        percentual: o.percentual,
+      }));
+
+      // 5) Cumprimento do cronograma
+      const { data: scheduleRows, error: scheduleError } = await db
+        .from("schedule_items")
+        .select("status, fim")
+        .eq("company_id", companyId)
+        .neq("status", "cancelado");
+      if (scheduleError) throw new Error(scheduleError.message);
+      const activeSchedule = scheduleRows ?? [];
+      const scheduleNowMs = Date.now();
+      const concluidasSchedule = activeSchedule.filter((s: { status: string }) => s.status === "concluido").length;
+      const atrasadasSchedule = activeSchedule.filter(
+        (s: { status: string; fim: string }) => s.status !== "concluido" && new Date(s.fim).getTime() < scheduleNowMs,
+      ).length;
+      const cronograma: ScheduleComplianceSummary = {
+        totalAtividades: activeSchedule.length,
+        concluidas: concluidasSchedule,
+        atrasadas: atrasadasSchedule,
+        taxaConclusaoPct: activeSchedule.length > 0 ? (concluidasSchedule / activeSchedule.length) * 100 : null,
+      };
+
+      // 6) Conclusão de checklist
+      const { data: checklistRows, error: checklistError } = await db
+        .from("checklist_items")
+        .select("status")
+        .eq("company_id", companyId)
+        .neq("status", "cancelado");
+      if (checklistError) throw new Error(checklistError.message);
+      const activeChecklist = checklistRows ?? [];
+      const concluidosChecklist = activeChecklist.filter((c: { status: string }) => c.status === "concluido").length;
+      const checklist: ChecklistComplianceSummary = {
+        totalItens: activeChecklist.length,
+        concluidos: concluidosChecklist,
+        taxaConclusaoPct: activeChecklist.length > 0 ? (concluidosChecklist / activeChecklist.length) * 100 : null,
+      };
+
+      // 7) Performance por período (mês de criação do evento)
+      const periodMap = new Map<string, { total: number; concluidos: number; cancelados: number }>();
+      for (const e of events) {
+        const periodo = e.createdAt.slice(0, 7);
+        const entry = periodMap.get(periodo) ?? { total: 0, concluidos: 0, cancelados: 0 };
+        entry.total += 1;
+        if (e.status === "concluido") entry.concluidos += 1;
+        if (e.status === "cancelado") entry.cancelados += 1;
+        periodMap.set(periodo, entry);
+      }
+      const performancePorPeriodo: PeriodPerformanceRow[] = Array.from(periodMap.entries())
+        .map(([periodo, v]) => ({ periodo, totalEventos: v.total, concluidos: v.concluidos, cancelados: v.cancelados }))
+        .sort((a, b) => b.periodo.localeCompare(a.periodo));
+
+      // 8) Histórico de eventos
+      const { data: historyRows, error: historyError } = await db
+        .from("event_status_history")
+        .select("event_id")
+        .eq("company_id", companyId);
+      if (historyError) throw new Error(historyError.message);
+      const historyCountByEvent = new Map<string, number>();
+      for (const row of historyRows ?? []) {
+        historyCountByEvent.set(row.event_id, (historyCountByEvent.get(row.event_id) ?? 0) + 1);
+      }
+      const historicoEventos: EventHistoryRow[] = events
+        .map((e) => ({
+          eventId: e.id,
+          eventTitulo: e.titulo,
+          status: e.status,
+          createdAt: e.createdAt,
+          updatedAt: e.updatedAt,
+          mudancasDeStatus: historyCountByEvent.get(e.id) ?? 0,
+        }))
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+
+      return {
+        previstoRealizado,
+        fornecedores,
+        presenca,
+        ocupacao,
+        cronograma,
+        checklist,
+        performancePorPeriodo,
+        historicoEventos,
+      };
     },
   },
 };
