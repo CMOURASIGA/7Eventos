@@ -12,6 +12,7 @@ import {
   SCHEDULE_ITEM_STATUS_LABELS,
   SCHEDULE_ITEM_PRIORITY_LABELS,
   EVENT_DOCUMENT_CATEGORY_LABELS,
+  REGISTRATION_STATUS_LABELS,
   type EventStatus,
   type ScheduleItem,
 } from "@/lib/domain/types";
@@ -41,6 +42,8 @@ import { TeamMemberStatusSelect } from "../TeamMemberStatusSelect";
 import { addScheduleItem, removeScheduleItem } from "../schedule-actions";
 import { ScheduleItemStatusSelect } from "../ScheduleItemStatusSelect";
 import { addDocument, archiveDocument, restoreDocument } from "../document-actions";
+import { addRegistration, checkInRegistration, undoCheckInRegistration, removeRegistration } from "../registration-actions";
+import { RegistrationStatusSelect } from "../RegistrationStatusSelect";
 
 const STATUS_FLOW: EventStatus[] = [
   "rascunho",
@@ -60,6 +63,7 @@ const TAB_KEYS = [
   "equipe",
   "cronograma",
   "documentos",
+  "participantes",
   "orcamento",
   "complexidade",
   "historico",
@@ -82,12 +86,14 @@ export default async function EventDetailPage({
     negado?: string;
     cronogramaFiltro?: string;
     documentosArquivados?: string;
+    participantesBusca?: string;
   }>;
 }) {
   const session = await requireAuthSession();
   const repository = getRepository();
   const { id } = await params;
-  const { error, updated, reservationCreated, created, tab, negado, cronogramaFiltro, documentosArquivados } = await searchParams;
+  const { error, updated, reservationCreated, created, tab, negado, cronogramaFiltro, documentosArquivados, participantesBusca } =
+    await searchParams;
   const canViewFinancials = can(session.perfil, "view_financials");
   const requestedTab = (TAB_KEYS as readonly string[]).includes(tab ?? "") ? (tab as TabKey) : "visao-geral";
   // A aba de orçamento expõe valores financeiros — quem não tem
@@ -116,6 +122,8 @@ export default async function EventDetailPage({
     supplierCatalog,
     scheduleItems,
     documents,
+    registrations,
+    participantCatalog,
   ] = await Promise.all([
     repository.events.getSessions(session, id),
     repository.reservations.list(session, { eventId: id }),
@@ -130,6 +138,8 @@ export default async function EventDetailPage({
     repository.suppliers.list(session, { status: "ativo" }),
     repository.schedule.listByEvent(session, id),
     repository.documents.listByEvent(session, id, { includeArchived: true }),
+    repository.registrations.listByEvent(session, id),
+    repository.participants.list(session, { status: "ativo" }),
   ]);
   const spaceById = new Map((await repository.spaces.list(session)).map((s) => [s.id, s]));
 
@@ -145,6 +155,7 @@ export default async function EventDetailPage({
   const canManageTeam = can(session.perfil, "manage_team");
   const canManageSchedule = can(session.perfil, "manage_schedule");
   const canManageDocuments = can(session.perfil, "manage_documents");
+  const canManageRegistrations = can(session.perfil, "manage_registrations");
   const teamMemberIds = new Set(teamMembers.map((m) => m.userId));
   const availableUsersForTeam = users.filter((u) => !teamMemberIds.has(u.id));
   // Operador (só "create_event"): pode continuar o próprio rascunho pelo
@@ -182,6 +193,20 @@ export default async function EventDetailPage({
 
   const visibleDocuments = showArchivedDocuments ? documents : documents.filter((d) => d.status === "ativo");
   const archivedDocumentsCount = documents.filter((d) => d.status === "arquivado").length;
+
+  // Inscrição + Credenciamento: "indicadores em tempo real" (seção 8) são
+  // uma contagem simples sobre as próprias inscrições — presente = já fez
+  // check-in; ausente = confirmado mas ainda sem check-in.
+  const participantById = new Map(participantCatalog.map((p) => [p.id, p]));
+  const registeredParticipantIds = new Set(registrations.map((r) => r.participantId));
+  const availableParticipants = participantCatalog.filter((p) => !registeredParticipantIds.has(p.id));
+  const confirmedRegistrations = registrations.filter((r) => r.status === "confirmada");
+  const presentesCount = confirmedRegistrations.filter((r) => r.checkInAt).length;
+  const ausentesCount = confirmedRegistrations.length - presentesCount;
+  const registrationSearch = (participantesBusca ?? "").trim().toLowerCase();
+  const visibleRegistrations = registrationSearch
+    ? registrations.filter((r) => (participantById.get(r.participantId)?.nome ?? "").toLowerCase().includes(registrationSearch))
+    : registrations;
 
   const factors = complexity?.fatores ?? defaultComplexityFactors();
   const preview = calculateComplexity(factors);
@@ -261,6 +286,7 @@ export default async function EventDetailPage({
             { key: "equipe", label: "Equipe", count: teamMembers.length },
             { key: "cronograma", label: "Cronograma", count: scheduleItems.length },
             { key: "documentos", label: "Documentos", count: visibleDocuments.length },
+            { key: "participantes", label: "Participantes", count: registrations.length },
             ...(canViewFinancials ? [{ key: "orcamento", label: "Orçamento" }] : []),
             { key: "complexidade", label: "Complexidade" },
             { key: "historico", label: "Histórico", count: history.length },
@@ -897,6 +923,129 @@ export default async function EventDetailPage({
                   <div className="sm:col-span-2">
                     <Button type="submit" variant="secondary" size="sm">
                       Registrar documento
+                    </Button>
+                  </div>
+                </form>
+              )}
+            </div>
+          )}
+
+          {activeTab === "participantes" && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="rounded-[var(--radius-sm)] bg-surface-muted p-3">
+                  <p className="text-lg font-semibold text-[var(--foreground)]">{confirmedRegistrations.length}</p>
+                  <p className="text-xs text-fg-muted">Confirmados</p>
+                </div>
+                <div className="rounded-[var(--radius-sm)] bg-success-50 p-3">
+                  <p className="text-lg font-semibold text-success-700">{presentesCount}</p>
+                  <p className="text-xs text-fg-muted">Presentes</p>
+                </div>
+                <div className="rounded-[var(--radius-sm)] bg-surface-muted p-3">
+                  <p className="text-lg font-semibold text-[var(--foreground)]">{ausentesCount}</p>
+                  <p className="text-xs text-fg-muted">Ausentes</p>
+                </div>
+              </div>
+
+              <form method="get" className="flex items-end gap-2">
+                <input type="hidden" name="tab" value="participantes" />
+                <div className="flex-1">
+                  <Field label="Localizar participante" htmlFor="participantesBusca">
+                    <Input id="participantesBusca" name="participantesBusca" defaultValue={participantesBusca} placeholder="Buscar por nome..." />
+                  </Field>
+                </div>
+                <Button type="submit" variant="secondary" size="sm">
+                  Buscar
+                </Button>
+              </form>
+
+              {visibleRegistrations.length === 0 ? (
+                <EmptyState title="Nenhuma inscrição encontrada." />
+              ) : (
+                <ul className="divide-y divide-border-subtle -mx-5">
+                  {visibleRegistrations.map((reg) => {
+                    const participant = participantById.get(reg.participantId);
+                    return (
+                      <li key={reg.id} className="px-5 py-3 flex items-center justify-between gap-3 flex-wrap text-sm">
+                        <div>
+                          <p className="font-medium text-[var(--foreground)] flex items-center gap-2 flex-wrap">
+                            {participant?.nome ?? "Participante"}
+                            {reg.checkInAt && <Badge tone="success">Presente</Badge>}
+                          </p>
+                          <p className="text-xs text-fg-muted">
+                            {participant?.email}
+                            {reg.lote ? ` · ${reg.lote}` : ""}
+                            {reg.categoria ? ` · ${reg.categoria}` : ""}
+                          </p>
+                          {reg.checkInAt && (
+                            <p className="text-xs text-fg-muted mt-0.5">
+                              Check-in às {formatDateTime(reg.checkInAt)}
+                              {reg.checkInPorId ? ` · por ${userById.get(reg.checkInPorId)?.nome ?? ""}` : ""}
+                            </p>
+                          )}
+                        </div>
+                        {canManageRegistrations ? (
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <RegistrationStatusSelect eventId={id} registrationId={reg.id} current={reg.status} />
+                            {reg.status === "confirmada" &&
+                              (reg.checkInAt ? (
+                                <form action={undoCheckInRegistration.bind(null, id, reg.id)}>
+                                  <Button type="submit" size="sm" variant="ghost" className="!px-2 !py-1">
+                                    Desfazer check-in
+                                  </Button>
+                                </form>
+                              ) : (
+                                <form action={checkInRegistration.bind(null, id, reg.id)}>
+                                  <Button type="submit" size="sm" variant="secondary" className="!px-2 !py-1">
+                                    Registrar check-in
+                                  </Button>
+                                </form>
+                              ))}
+                            <ConfirmButton
+                              size="sm"
+                              variant="ghost"
+                              title="Remover inscrição"
+                              description={`A inscrição de "${participant?.nome ?? "este participante"}" será removida deste evento. O cadastro do participante no catálogo não é afetado.`}
+                              confirmLabel="Remover"
+                              aria-label={`Remover inscrição de ${participant?.nome ?? ""}`}
+                              className="!px-2 !py-1 !text-danger-700"
+                              onConfirm={removeRegistration.bind(null, id, reg.id)}
+                            >
+                              Remover
+                            </ConfirmButton>
+                          </div>
+                        ) : (
+                          <Badge tone="brand">{REGISTRATION_STATUS_LABELS[reg.status]}</Badge>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+
+              {canManageRegistrations && (
+                <form
+                  action={addRegistration.bind(null, id)}
+                  className="pt-4 border-t border-border-subtle grid sm:grid-cols-2 gap-3 items-end"
+                >
+                  <Field label="Participante" htmlFor="reg-participantId">
+                    <Select id="reg-participantId" name="participantId" required defaultValue="">
+                      <option value="" disabled>
+                        Selecione
+                      </option>
+                      {availableParticipants.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.nome} — {p.email}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="Lote" htmlFor="reg-lote" hint="Opcional">
+                    <Input id="reg-lote" name="lote" placeholder="Ex: 1º lote" />
+                  </Field>
+                  <div className="sm:col-span-2">
+                    <Button type="submit" variant="secondary" size="sm">
+                      Registrar inscrição
                     </Button>
                   </div>
                 </form>

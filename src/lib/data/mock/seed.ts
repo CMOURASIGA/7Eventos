@@ -6,12 +6,15 @@ import type {
   ComplexityAssessment,
   EventDocument,
   EventEntity,
+  EventRegistration,
   EventSession,
   EventStatus,
   EventSupplier,
   EventSupplierSituacao,
   EventDocumentCategory,
   EventTeamMember,
+  Participant,
+  RegistrationStatus,
   Reservation,
   ScheduleItem,
   ScheduleItemStatus,
@@ -22,7 +25,7 @@ import type {
   User,
 } from "@/lib/domain/types";
 import { calculateComplexity } from "@/lib/domain/complexity";
-import { DEMANDANTES } from "@/lib/domain/catalog";
+import { CATEGORIAS_PARTICIPANTE, DEMANDANTES } from "@/lib/domain/catalog";
 
 /**
  * Gerador de base de demonstração rica para o 7Eventos.
@@ -98,6 +101,8 @@ export interface SeedData {
   teamMembers: EventTeamMember[];
   scheduleItems: ScheduleItem[];
   documents: EventDocument[];
+  participants: Participant[];
+  registrations: EventRegistration[];
 }
 
 export function generateSeed(): SeedData {
@@ -370,6 +375,8 @@ const STATUS_CYCLE: EventStatus[] = [
   const teamMembers: EventTeamMember[] = [];
   const scheduleItems: ScheduleItem[] = [];
   const documents: EventDocument[] = [];
+  const participants: Participant[] = [];
+  const registrations: EventRegistration[] = [];
 
   const seq = {
     event: 1,
@@ -385,6 +392,8 @@ const STATUS_CYCLE: EventStatus[] = [
     teamMember: 1,
     scheduleItem: 1,
     document: 1,
+    participant: 1,
+    registration: 1,
   };
 
   // Catálogo de fornecedores por empresa (Fase 2).
@@ -426,6 +435,54 @@ const STATUS_CYCLE: EventStatus[] = [
     }
   }
   const suppliersByCompany = (companyId: string) => suppliers.filter((s) => s.companyId === companyId && s.status === "ativo");
+
+  // Catálogo de participantes por empresa (Fase 2) — combinação de nomes
+  // e sobrenomes para gerar volume suficiente sem repetir literalmente
+  // cada evento; determinístico via o mesmo RNG da seed.
+  const participantFirstNames = [
+    "Ana", "Bruno", "Carla", "Daniel", "Eduarda", "Felipe", "Gabriela", "Henrique",
+    "Isabela", "João", "Karina", "Lucas", "Mariana", "Nicolas", "Olívia", "Pedro",
+    "Renata", "Samuel", "Tatiana", "Vinícius",
+  ];
+  const participantLastNames = [
+    "Almeida", "Barros", "Castro", "Duarte", "Esteves", "Farias", "Gonçalves",
+    "Henriques", "Ibrahim", "Junqueira", "Lopes", "Machado", "Nogueira", "Oliveira",
+    "Pinheiro", "Queiroz", "Ribeiro", "Salles", "Teixeira", "Vasconcelos",
+  ];
+  const participantOrganizacoes: Record<string, string[]> = {
+    company_consult: ["Consult Eventos Brasil", "Parceiro Comercial", "Imprensa Convidada", "Cliente Convidado", "Fornecedor Homologado"],
+    company_aurora: ["Aurora Live", "Patrocinador Master", "Imprensa Convidada", "Produtora Parceira", "Casa de Show Parceira"],
+  };
+  const participantTemplates: Record<string, { companyId: string; count: number }> = {
+    company_consult: { companyId: "company_consult", count: 22 },
+    company_aurora: { companyId: "company_aurora", count: 16 },
+  };
+  const usedParticipantNames = new Set<string>();
+  for (const { companyId, count } of Object.values(participantTemplates)) {
+    for (let i = 0; i < count; i++) {
+      let nomeCompleto = "";
+      do {
+        nomeCompleto = `${pick(participantFirstNames)} ${pick(participantLastNames)}`;
+      } while (usedParticipantNames.has(`${companyId}:${nomeCompleto}`));
+      usedParticipantNames.add(`${companyId}:${nomeCompleto}`);
+      const inactive = rng() < 0.08;
+      const domain = companyId === "company_consult" ? "consulteventosconvidados.com.br" : "auroraliveconvidados.com.br";
+      participants.push({
+        id: uid("participant", seq.participant++),
+        companyId,
+        nome: nomeCompleto,
+        email: `${nomeCompleto.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, ".")}@${domain}`,
+        telefone: rng() < 0.7 ? `(11) 9${intBetween(1000, 9999)}-${intBetween(1000, 9999)}` : undefined,
+        organizacao: pick(participantOrganizacoes[companyId]),
+        categoria: pick(CATEGORIAS_PARTICIPANTE),
+        status: inactive ? "inativo" : "ativo",
+        observacoes: inactive ? "Contato desatualizado — aguardando confirmação de dados." : undefined,
+        createdAt: nowIso(-intBetween(30, 300)),
+        updatedAt: nowIso(-intBetween(1, 60)),
+      });
+    }
+  }
+  const participantsByCompany = (companyId: string) => participants.filter((p) => p.companyId === companyId && p.status === "ativo");
 
   const companyConfigs = [
     { companyId: "company_consult", managers: ["user_consult_gestor1", "user_consult_gestor2"], admin: "user_consult_admin", operators: ["user_consult_operador1", "user_consult_operador2"], count: 18 },
@@ -710,6 +767,37 @@ const STATUS_CYCLE: EventStatus[] = [
         });
       }
 
+      // Inscrição + Credenciamento (Fase 2) — eventos em rascunho ainda não
+      // abriram inscrição.
+      const participantPool = participantsByCompany(cfg.companyId);
+      if (participantPool.length > 0 && finalStatus !== "rascunho") {
+        const registered = pickMany(participantPool, intBetween(2, Math.min(8, participantPool.length)));
+        const lotes = ["1º lote", "2º lote", "Cortesia"];
+        for (const participant of registered) {
+          const status: RegistrationStatus =
+            finalStatus === "cancelado" ? "cancelada" : rng() < 0.15 ? "solicitada" : rng() < 0.05 ? "cancelada" : "confirmada";
+          // Credenciamento só faz sentido para quem participou de fato: só
+          // eventos já ocorridos (isPast/em_execucao) e com inscrição
+          // confirmada recebem check-in — a maioria dos confirmados
+          // comparece, uma parte não.
+          const jaOcorreu = isPast || finalStatus === "em_execucao";
+          const compareceu = status === "confirmada" && jaOcorreu && rng() < 0.85;
+          registrations.push({
+            id: uid("registration", seq.registration++),
+            companyId: cfg.companyId,
+            eventId,
+            participantId: participant.id,
+            lote: pick(lotes),
+            categoria: participant.categoria,
+            status,
+            checkInAt: compareceu ? addHours(inicio, -intBetween(0, 1)) : undefined,
+            checkInPorId: compareceu ? pick([...cfg.operators, responsavel]) : undefined,
+            createdAt: event.createdAt,
+            updatedAt: event.updatedAt,
+          });
+        }
+      }
+
       // Complexidade
       const factors = {
         publicoAlvo: intBetween(0, 3),
@@ -816,5 +904,7 @@ const STATUS_CYCLE: EventStatus[] = [
     teamMembers,
     scheduleItems,
     documents,
+    participants,
+    registrations,
   };
 }

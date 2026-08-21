@@ -5,9 +5,11 @@ import type {
   ComplexityAssessment,
   EventDocument,
   EventEntity,
+  EventRegistration,
   EventSession,
   EventSupplier,
   EventTeamMember,
+  Participant,
   Reservation,
   ScheduleItem,
   Space,
@@ -667,6 +669,133 @@ export const mockRepository: Repository = {
       const store = getStore();
       const companyId = requireCompany(session);
       store.teamMembers = store.teamMembers.filter((m) => !(m.id === id && m.companyId === companyId));
+    },
+  },
+
+  participants: {
+    async list(session, filters) {
+      const store = getStore();
+      let items = scoped(session, store.participants);
+      if (filters?.nome) items = items.filter((p) => p.nome.toLowerCase().includes(filters.nome!.toLowerCase()));
+      if (filters?.categoria) items = items.filter((p) => p.categoria === filters.categoria);
+      if (filters?.status) items = items.filter((p) => p.status === filters.status);
+      return items.sort((a, b) => a.nome.localeCompare(b.nome));
+    },
+    async get(session, id) {
+      const store = getStore();
+      return scoped(session, store.participants).find((p) => p.id === id) ?? null;
+    },
+    async create(session, input) {
+      assertCan(session.perfil, "manage_participants");
+      const store = getStore();
+      const companyId = requireCompany(session);
+      const participant: Participant = { id: nextId("participant"), companyId, createdAt: nowIso(), updatedAt: nowIso(), ...input };
+      store.participants.push(participant);
+      pushAudit(session, { acao: "criacao", entidade: "participante", entidadeId: participant.id, descricao: `Participante "${participant.nome}" cadastrado.` });
+      return participant;
+    },
+    async update(session, id, input) {
+      assertCan(session.perfil, "manage_participants");
+      const store = getStore();
+      const participant = scoped(session, store.participants).find((p) => p.id === id);
+      if (!participant) throw new Error("Participante não encontrado.");
+      Object.assign(participant, input, { updatedAt: nowIso() });
+      pushAudit(session, { acao: "edicao", entidade: "participante", entidadeId: participant.id, descricao: `Participante "${participant.nome}" editado.` });
+      return participant;
+    },
+    async setStatus(session, id, status) {
+      assertCan(session.perfil, "manage_participants");
+      const store = getStore();
+      const participant = scoped(session, store.participants).find((p) => p.id === id);
+      if (!participant) throw new Error("Participante não encontrado.");
+      participant.status = status;
+      participant.updatedAt = nowIso();
+      pushAudit(session, {
+        acao: status === "inativo" ? "cancelamento" : "edicao",
+        entidade: "participante",
+        entidadeId: participant.id,
+        descricao: `Participante "${participant.nome}" marcado como ${status === "inativo" ? "inativo" : "ativo"}.`,
+      });
+      return participant;
+    },
+  },
+
+  registrations: {
+    async listByEvent(session, eventId) {
+      const store = getStore();
+      const companyId = requireCompany(session);
+      return store.registrations
+        .filter((r) => r.eventId === eventId && r.companyId === companyId)
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    },
+    async create(session, input) {
+      assertCan(session.perfil, "manage_registrations");
+      const store = getStore();
+      const companyId = requireCompany(session);
+      const event = store.events.find((e) => e.id === input.eventId && e.companyId === companyId);
+      if (!event) throw new Error("Evento não encontrado.");
+      const participant = store.participants.find((p) => p.id === input.participantId && p.companyId === companyId);
+      if (!participant) throw new Error("Participante não encontrado nesta empresa.");
+      const duplicate = store.registrations.find((r) => r.eventId === input.eventId && r.participantId === input.participantId);
+      if (duplicate) throw new Error("Este participante já está inscrito neste evento.");
+      const registration: EventRegistration = {
+        id: nextId("registration"),
+        companyId,
+        status: "solicitada",
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+        ...input,
+      };
+      store.registrations.push(registration);
+      pushAudit(session, {
+        acao: "criacao",
+        entidade: "inscricao",
+        entidadeId: registration.id,
+        descricao: `Inscrição de "${participant.nome}" registrada para o evento.`,
+      });
+      return registration;
+    },
+    async updateStatus(session, id, status) {
+      assertCan(session.perfil, "manage_registrations");
+      const store = getStore();
+      const companyId = requireCompany(session);
+      const registration = store.registrations.find((r) => r.id === id && r.companyId === companyId);
+      if (!registration) throw new Error("Inscrição não encontrada.");
+      registration.status = status;
+      registration.updatedAt = nowIso();
+      pushAudit(session, { acao: "edicao", entidade: "inscricao", entidadeId: registration.id, descricao: `Inscrição atualizada para status ${status}.` });
+      return registration;
+    },
+    async checkIn(session, id) {
+      assertCan(session.perfil, "manage_registrations");
+      const store = getStore();
+      const companyId = requireCompany(session);
+      const registration = store.registrations.find((r) => r.id === id && r.companyId === companyId);
+      if (!registration) throw new Error("Inscrição não encontrada.");
+      if (registration.status !== "confirmada") throw new Error("Inscrição precisa estar confirmada para registrar check-in.");
+      registration.checkInAt = nowIso();
+      registration.checkInPorId = session.userId;
+      registration.updatedAt = nowIso();
+      pushAudit(session, { acao: "edicao", entidade: "credenciamento", entidadeId: registration.id, descricao: "Check-in registrado." });
+      return registration;
+    },
+    async undoCheckIn(session, id) {
+      assertCan(session.perfil, "manage_registrations");
+      const store = getStore();
+      const companyId = requireCompany(session);
+      const registration = store.registrations.find((r) => r.id === id && r.companyId === companyId);
+      if (!registration) throw new Error("Inscrição não encontrada.");
+      registration.checkInAt = undefined;
+      registration.checkInPorId = undefined;
+      registration.updatedAt = nowIso();
+      pushAudit(session, { acao: "edicao", entidade: "credenciamento", entidadeId: registration.id, descricao: "Check-in desfeito." });
+      return registration;
+    },
+    async remove(session, id) {
+      assertCan(session.perfil, "manage_registrations");
+      const store = getStore();
+      const companyId = requireCompany(session);
+      store.registrations = store.registrations.filter((r) => !(r.id === id && r.companyId === companyId));
     },
   },
 

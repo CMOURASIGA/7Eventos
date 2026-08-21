@@ -445,3 +445,63 @@ export interface EventDocument {
   updatedAt: string;
   arquivadoEm?: string;
 }
+
+/**
+ * Fase 2 - Gestão Completa do Evento (docs/FASE_02_GESTAO.md)
+ *
+ * Fatia 3: Participantes + Inscrição + Credenciamento.
+ */
+
+export type ParticipantStatus = "ativo" | "inativo";
+
+/**
+ * Cadastro de participante, por empresa e independente de evento — mesmo
+ * padrão de Supplier (catálogo reaproveitável, vinculado a eventos via
+ * EventRegistration). Deliberadamente sem campos além dos pedidos pela
+ * spec ("evitar coleta de dados sem finalidade operacional").
+ */
+export interface Participant {
+  id: string;
+  companyId: string;
+  nome: string;
+  email: string;
+  telefone?: string;
+  organizacao?: string;
+  categoria?: string;
+  status: ParticipantStatus;
+  observacoes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type RegistrationStatus = "solicitada" | "confirmada" | "cancelada";
+
+export const REGISTRATION_STATUS_LABELS: Record<RegistrationStatus, string> = {
+  solicitada: "Solicitada",
+  confirmada: "Confirmada",
+  cancelada: "Cancelada",
+};
+
+/**
+ * Inscrição de um participante do catálogo em um evento específico
+ * (docs/FASE_02_GESTAO.md seção 7). O credenciamento (seção 8) — check-in,
+ * horário, presentes/ausentes — é tratado como um estado desta mesma
+ * inscrição (`checkInAt`/`checkInPorId`), não uma entidade separada: só
+ * faz sentido credenciar quem já está inscrito no evento, e "presentes"/
+ * "ausentes" nada mais são do que inscrições confirmadas com ou sem
+ * `checkInAt` preenchido.
+ */
+export interface EventRegistration {
+  id: string;
+  companyId: string;
+  eventId: string;
+  participantId: string;
+  lote?: string;
+  categoria?: string;
+  status: RegistrationStatus;
+  checkInAt?: string;
+  /** Usuário (perfil da equipe) que registrou o check-in. */
+  checkInPorId?: string;
+  createdAt: string;
+  updatedAt: string;
+}

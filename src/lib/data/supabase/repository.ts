@@ -21,8 +21,10 @@ import {
   mapEvent,
   mapEventSession,
   mapEventDocument,
+  mapEventRegistration,
   mapEventSupplier,
   mapEventTeamMember,
+  mapParticipant,
   mapReservation,
   mapScheduleItem,
   mapSpace,
@@ -934,6 +936,215 @@ export const supabaseRepository: Repository = {
       const db = getSupabaseServiceClient();
       const companyId = requireCompany(session);
       const { error } = await db.from("event_team_members").delete().eq("id", id).eq("company_id", companyId);
+      if (error) throw new Error(error.message);
+    },
+  },
+
+  participants: {
+    async list(session, filters) {
+      const db = getSupabaseServiceClient();
+      let query = db.from("participants").select("*").eq("company_id", requireCompany(session));
+      if (filters?.nome) query = query.ilike("nome", `%${filters.nome}%`);
+      if (filters?.categoria) query = query.eq("categoria", filters.categoria);
+      if (filters?.status) query = query.eq("status", filters.status);
+      const { data, error } = await query.order("nome");
+      if (error) throw new Error(error.message);
+      return (data ?? []).map(mapParticipant);
+    },
+    async get(session, id) {
+      const db = getSupabaseServiceClient();
+      const { data, error } = await db
+        .from("participants")
+        .select("*")
+        .eq("id", id)
+        .eq("company_id", requireCompany(session))
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      return data ? mapParticipant(data) : null;
+    },
+    async create(session, input) {
+      assertCan(session.perfil, "manage_participants");
+      const db = getSupabaseServiceClient();
+      const companyId = requireCompany(session);
+      const row = unwrap<Row>(
+        await db
+          .from("participants")
+          .insert({
+            company_id: companyId,
+            nome: input.nome,
+            email: input.email,
+            telefone: input.telefone,
+            organizacao: input.organizacao,
+            categoria: input.categoria,
+            status: input.status,
+            observacoes: input.observacoes,
+          })
+          .select("*")
+          .single(),
+      );
+      const participant = mapParticipant(row);
+      await recordAudit(session, { acao: "criacao", entidade: "participante", entidadeId: participant.id, descricao: `Participante "${participant.nome}" cadastrado.` });
+      return participant;
+    },
+    async update(session, id, input) {
+      assertCan(session.perfil, "manage_participants");
+      const db = getSupabaseServiceClient();
+      const companyId = requireCompany(session);
+      const row = unwrap<Row>(
+        await db
+          .from("participants")
+          .update({
+            nome: input.nome,
+            email: input.email,
+            telefone: input.telefone,
+            organizacao: input.organizacao,
+            categoria: input.categoria,
+            status: input.status,
+            observacoes: input.observacoes,
+          })
+          .eq("id", id)
+          .eq("company_id", companyId)
+          .select("*")
+          .single(),
+      );
+      const participant = mapParticipant(row);
+      await recordAudit(session, { acao: "edicao", entidade: "participante", entidadeId: participant.id, descricao: `Participante "${participant.nome}" editado.` });
+      return participant;
+    },
+    async setStatus(session, id, status) {
+      assertCan(session.perfil, "manage_participants");
+      const db = getSupabaseServiceClient();
+      const companyId = requireCompany(session);
+      const row = unwrap<Row>(
+        await db.from("participants").update({ status }).eq("id", id).eq("company_id", companyId).select("*").single(),
+      );
+      const participant = mapParticipant(row);
+      await recordAudit(session, {
+        acao: status === "inativo" ? "cancelamento" : "edicao",
+        entidade: "participante",
+        entidadeId: participant.id,
+        descricao: `Participante "${participant.nome}" marcado como ${status === "inativo" ? "inativo" : "ativo"}.`,
+      });
+      return participant;
+    },
+  },
+
+  registrations: {
+    async listByEvent(session, eventId) {
+      const db = getSupabaseServiceClient();
+      await assertEventInCompany(session, eventId);
+      const { data, error } = await db
+        .from("event_registrations")
+        .select("*")
+        .eq("event_id", eventId)
+        .order("created_at");
+      if (error) throw new Error(error.message);
+      return (data ?? []).map(mapEventRegistration);
+    },
+    async create(session, input) {
+      assertCan(session.perfil, "manage_registrations");
+      const db = getSupabaseServiceClient();
+      const companyId = requireCompany(session);
+      await assertEventInCompany(session, input.eventId);
+      const { data: participantRow, error: participantError } = await db
+        .from("participants")
+        .select("id, nome")
+        .eq("id", input.participantId)
+        .eq("company_id", companyId)
+        .maybeSingle();
+      if (participantError) throw new Error(participantError.message);
+      if (!participantRow) throw new Error("Participante não encontrado nesta empresa.");
+      const { data: existing, error: existingError } = await db
+        .from("event_registrations")
+        .select("id")
+        .eq("event_id", input.eventId)
+        .eq("participant_id", input.participantId)
+        .maybeSingle();
+      if (existingError) throw new Error(existingError.message);
+      if (existing) throw new Error("Este participante já está inscrito neste evento.");
+
+      const row = unwrap<Row>(
+        await db
+          .from("event_registrations")
+          .insert({
+            company_id: companyId,
+            event_id: input.eventId,
+            participant_id: input.participantId,
+            lote: input.lote,
+            categoria: input.categoria,
+            status: "solicitada",
+          })
+          .select("*")
+          .single(),
+      );
+      const registration = mapEventRegistration(row);
+      await recordAudit(session, {
+        acao: "criacao",
+        entidade: "inscricao",
+        entidadeId: registration.id,
+        descricao: `Inscrição de "${participantRow.nome}" registrada para o evento.`,
+      });
+      return registration;
+    },
+    async updateStatus(session, id, status) {
+      assertCan(session.perfil, "manage_registrations");
+      const db = getSupabaseServiceClient();
+      const companyId = requireCompany(session);
+      const row = unwrap<Row>(
+        await db.from("event_registrations").update({ status }).eq("id", id).eq("company_id", companyId).select("*").single(),
+      );
+      const registration = mapEventRegistration(row);
+      await recordAudit(session, { acao: "edicao", entidade: "inscricao", entidadeId: registration.id, descricao: `Inscrição atualizada para status ${status}.` });
+      return registration;
+    },
+    async checkIn(session, id) {
+      assertCan(session.perfil, "manage_registrations");
+      const db = getSupabaseServiceClient();
+      const companyId = requireCompany(session);
+      const { data: current, error: currentError } = await db
+        .from("event_registrations")
+        .select("status")
+        .eq("id", id)
+        .eq("company_id", companyId)
+        .maybeSingle();
+      if (currentError) throw new Error(currentError.message);
+      if (!current) throw new Error("Inscrição não encontrada.");
+      if (current.status !== "confirmada") throw new Error("Inscrição precisa estar confirmada para registrar check-in.");
+      const row = unwrap<Row>(
+        await db
+          .from("event_registrations")
+          .update({ check_in_at: new Date().toISOString(), check_in_por_id: session.userId })
+          .eq("id", id)
+          .eq("company_id", companyId)
+          .select("*")
+          .single(),
+      );
+      const registration = mapEventRegistration(row);
+      await recordAudit(session, { acao: "edicao", entidade: "credenciamento", entidadeId: registration.id, descricao: "Check-in registrado." });
+      return registration;
+    },
+    async undoCheckIn(session, id) {
+      assertCan(session.perfil, "manage_registrations");
+      const db = getSupabaseServiceClient();
+      const companyId = requireCompany(session);
+      const row = unwrap<Row>(
+        await db
+          .from("event_registrations")
+          .update({ check_in_at: null, check_in_por_id: null })
+          .eq("id", id)
+          .eq("company_id", companyId)
+          .select("*")
+          .single(),
+      );
+      const registration = mapEventRegistration(row);
+      await recordAudit(session, { acao: "edicao", entidade: "credenciamento", entidadeId: registration.id, descricao: "Check-in desfeito." });
+      return registration;
+    },
+    async remove(session, id) {
+      assertCan(session.perfil, "manage_registrations");
+      const db = getSupabaseServiceClient();
+      const companyId = requireCompany(session);
+      const { error } = await db.from("event_registrations").delete().eq("id", id).eq("company_id", companyId);
       if (error) throw new Error(error.message);
     },
   },
