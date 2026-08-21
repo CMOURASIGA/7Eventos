@@ -59,3 +59,25 @@ export const CATEGORIAS_PARTICIPANTE = [
   "Público geral",
   "Outros",
 ] as const;
+
+/**
+ * Fase 2 - categorias de itens de orçamento. Mais amplo que
+ * CATEGORIAS_FORNECEDOR (inclui itens sem fornecedor associado, como
+ * espaço/local e equipe interna).
+ */
+export const CATEGORIAS_ORCAMENTO = [
+  "Espaço/Local",
+  "Audiovisual",
+  "Buffet/Catering",
+  "Decoração",
+  "Segurança",
+  "Transporte",
+  "Cerimonial",
+  "Fotografia/Vídeo",
+  "Comunicação/Marketing",
+  "Brindes",
+  "Infraestrutura",
+  "Equipe/RH",
+  "Taxas e licenças",
+  "Outros",
+] as const;

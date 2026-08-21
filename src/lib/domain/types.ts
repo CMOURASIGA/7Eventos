@@ -505,3 +505,47 @@ export interface EventRegistration {
   createdAt: string;
   updatedAt: string;
 }
+
+/**
+ * Fase 2 - Gestão Completa do Evento (docs/FASE_02_GESTAO.md)
+ *
+ * Fatia 4a: Financeiro detalhado — evolui o orçamento único da Fase 1
+ * (`Budget`, acima) com itens de orçamento por categoria/fornecedor.
+ * Reaproveita as capabilities já existentes "manage_budget" e
+ * "view_financials" (nenhuma capability nova) e o mesmo `Budget` como
+ * cabeçalho (valor previsto total do evento); `BudgetItem` é o
+ * detalhamento linha a linha.
+ */
+
+export type BudgetItemStatus = "previsto" | "cotado" | "contratado" | "realizado" | "cancelado";
+
+export const BUDGET_ITEM_STATUS_LABELS: Record<BudgetItemStatus, string> = {
+  previsto: "Previsto",
+  cotado: "Cotado",
+  contratado: "Contratado",
+  realizado: "Realizado",
+  cancelado: "Cancelado",
+};
+
+/**
+ * Item de orçamento de um evento — uma linha de custo (categoria,
+ * fornecedor opcional, valores cotado/contratado/realizado). "Diferença"
+ * (previsto x realizado) é sempre calculada na UI a partir destes
+ * valores, nunca persistida.
+ */
+export interface BudgetItem {
+  id: string;
+  companyId: string;
+  eventId: string;
+  categoria: string;
+  /** Vínculo opcional ao catálogo de fornecedores — nem todo item tem um fornecedor associado (ex: taxas, equipe interna). */
+  supplierId?: string;
+  descricao: string;
+  valorCotado?: number;
+  valorContratado?: number;
+  valorRealizado?: number;
+  status: BudgetItemStatus;
+  observacoes?: string;
+  createdAt: string;
+  updatedAt: string;
+}

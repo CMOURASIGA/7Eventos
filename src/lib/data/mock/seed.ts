@@ -1,6 +1,8 @@
 import type {
   AuditLog,
   Budget,
+  BudgetItem,
+  BudgetItemStatus,
   ChecklistItem,
   Company,
   ComplexityAssessment,
@@ -25,7 +27,7 @@ import type {
   User,
 } from "@/lib/domain/types";
 import { calculateComplexity } from "@/lib/domain/complexity";
-import { CATEGORIAS_PARTICIPANTE, DEMANDANTES } from "@/lib/domain/catalog";
+import { CATEGORIAS_ORCAMENTO, CATEGORIAS_PARTICIPANTE, DEMANDANTES } from "@/lib/domain/catalog";
 
 /**
  * Gerador de base de demonstração rica para o 7Eventos.
@@ -103,6 +105,7 @@ export interface SeedData {
   documents: EventDocument[];
   participants: Participant[];
   registrations: EventRegistration[];
+  budgetItems: BudgetItem[];
 }
 
 export function generateSeed(): SeedData {
@@ -377,6 +380,7 @@ const STATUS_CYCLE: EventStatus[] = [
   const documents: EventDocument[] = [];
   const participants: Participant[] = [];
   const registrations: EventRegistration[] = [];
+  const budgetItems: BudgetItem[] = [];
 
   const seq = {
     event: 1,
@@ -394,6 +398,7 @@ const STATUS_CYCLE: EventStatus[] = [
     document: 1,
     participant: 1,
     registration: 1,
+    budgetItem: 1,
   };
 
   // Catálogo de fornecedores por empresa (Fase 2).
@@ -634,6 +639,39 @@ const STATUS_CYCLE: EventStatus[] = [
           createdAt: event.createdAt,
           updatedAt: event.updatedAt,
         });
+
+        // Financeiro detalhado (Fase 2 fatia 4a) — itens de orçamento só
+        // fazem sentido para eventos que já têm um orçamento previsto.
+        const budgetItemPool = suppliersByCompany(cfg.companyId);
+        const itemCount = intBetween(2, 5);
+        for (let bi = 0; bi < itemCount; bi++) {
+          const categoria = pick(CATEGORIAS_ORCAMENTO);
+          const withSupplier = rng() < 0.7 && budgetItemPool.length > 0;
+          const itemStatus: BudgetItemStatus =
+            finalStatus === "cancelado"
+              ? "cancelado"
+              : isPast
+                ? pick(["realizado", "realizado", "contratado"] as const)
+                : pick(["previsto", "cotado", "contratado"] as const);
+          const valorCotado = intBetween(1, 40) * 500;
+          const contratadoOuMais = itemStatus === "contratado" || itemStatus === "realizado";
+          const valorContratado = contratadoOuMais ? Math.round(valorCotado * (0.9 + rng() * 0.15)) : undefined;
+          const valorRealizado = itemStatus === "realizado" ? Math.round((valorContratado ?? valorCotado) * (0.95 + rng() * 0.1)) : undefined;
+          budgetItems.push({
+            id: uid("budget_item", seq.budgetItem++),
+            companyId: cfg.companyId,
+            eventId,
+            categoria,
+            supplierId: withSupplier ? pick(budgetItemPool).id : undefined,
+            descricao: `${categoria} — ${titulo}`,
+            valorCotado,
+            valorContratado,
+            valorRealizado,
+            status: itemStatus,
+            createdAt: event.createdAt,
+            updatedAt: event.updatedAt,
+          });
+        }
       }
 
       // Fornecedores vinculados ao evento (Fase 2) — eventos ainda em
@@ -906,5 +944,6 @@ const STATUS_CYCLE: EventStatus[] = [
     documents,
     participants,
     registrations,
+    budgetItems,
   };
 }

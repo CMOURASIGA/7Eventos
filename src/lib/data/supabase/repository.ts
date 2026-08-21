@@ -15,6 +15,7 @@ import {
   eventToRow,
   mapAuditLog,
   mapBudget,
+  mapBudgetItem,
   mapChecklistItem,
   mapCompany,
   mapComplexity,
@@ -1435,6 +1436,116 @@ export const supabaseRepository: Repository = {
       const budget = mapBudget(row);
       await recordAudit(session, { acao: "edicao", entidade: "orcamento", entidadeId: budget.id, descricao: "Orçamento previsto do evento atualizado." });
       return budget;
+    },
+  },
+
+  budgetItems: {
+    async listByEvent(session, eventId) {
+      const db = getSupabaseServiceClient();
+      await assertEventInCompany(session, eventId);
+      const { data, error } = await db
+        .from("budget_items")
+        .select("*")
+        .eq("event_id", eventId)
+        .order("created_at");
+      if (error) throw new Error(error.message);
+      return (data ?? []).map(mapBudgetItem);
+    },
+    async create(session, input) {
+      assertCan(session.perfil, "manage_budget");
+      const db = getSupabaseServiceClient();
+      const companyId = requireCompany(session);
+      await assertEventInCompany(session, input.eventId);
+      if (input.supplierId) {
+        const { data: supplierRow, error: supplierError } = await db
+          .from("suppliers")
+          .select("id")
+          .eq("id", input.supplierId)
+          .eq("company_id", companyId)
+          .maybeSingle();
+        if (supplierError) throw new Error(supplierError.message);
+        if (!supplierRow) throw new Error("Fornecedor não encontrado nesta empresa.");
+      }
+      for (const [label, value] of [
+        ["cotado", input.valorCotado],
+        ["contratado", input.valorContratado],
+        ["realizado", input.valorRealizado],
+      ] as const) {
+        if (value != null && value < 0) throw new Error(`Valor ${label} não pode ser negativo.`);
+      }
+
+      const row = unwrap<Row>(
+        await db
+          .from("budget_items")
+          .insert({
+            company_id: companyId,
+            event_id: input.eventId,
+            categoria: input.categoria,
+            supplier_id: input.supplierId,
+            descricao: input.descricao,
+            valor_cotado: input.valorCotado,
+            valor_contratado: input.valorContratado,
+            valor_realizado: input.valorRealizado,
+            status: input.status,
+            observacoes: input.observacoes,
+          })
+          .select("*")
+          .single(),
+      );
+      const item = mapBudgetItem(row);
+      await recordAudit(session, { acao: "criacao", entidade: "orcamento_item", entidadeId: item.id, descricao: `Item de orçamento "${item.descricao}" criado.` });
+      return item;
+    },
+    async update(session, id, input) {
+      assertCan(session.perfil, "manage_budget");
+      const db = getSupabaseServiceClient();
+      const companyId = requireCompany(session);
+      if (input.supplierId) {
+        const { data: supplierRow, error: supplierError } = await db
+          .from("suppliers")
+          .select("id")
+          .eq("id", input.supplierId)
+          .eq("company_id", companyId)
+          .maybeSingle();
+        if (supplierError) throw new Error(supplierError.message);
+        if (!supplierRow) throw new Error("Fornecedor não encontrado nesta empresa.");
+      }
+      for (const [label, value] of [
+        ["cotado", input.valorCotado],
+        ["contratado", input.valorContratado],
+        ["realizado", input.valorRealizado],
+      ] as const) {
+        if (value != null && value < 0) throw new Error(`Valor ${label} não pode ser negativo.`);
+      }
+
+      const row = unwrap<Row>(
+        await db
+          .from("budget_items")
+          .update({
+            categoria: input.categoria,
+            supplier_id: input.supplierId,
+            descricao: input.descricao,
+            valor_cotado: input.valorCotado,
+            valor_contratado: input.valorContratado,
+            valor_realizado: input.valorRealizado,
+            status: input.status,
+            observacoes: input.observacoes,
+          })
+          .eq("id", id)
+          .eq("company_id", companyId)
+          .select("*")
+          .single(),
+      );
+      const item = mapBudgetItem(row);
+      await recordAudit(session, { acao: "edicao", entidade: "orcamento_item", entidadeId: item.id, descricao: `Item de orçamento "${item.descricao}" atualizado.` });
+      return item;
+    },
+    async remove(session, id) {
+      assertCan(session.perfil, "manage_budget");
+      const db = getSupabaseServiceClient();
+      const companyId = requireCompany(session);
+      const { error } = await db.from("budget_items").delete().eq("id", id).eq("company_id", companyId);
+      if (error) throw new Error(error.message);
     },
   },
 

@@ -1,6 +1,7 @@
 import type {
   AuditLog,
   Budget,
+  BudgetItem,
   ChecklistItem,
   Company,
   ComplexityAssessment,
@@ -315,6 +316,24 @@ export function mapBudget(r: Row): Budget {
     valorPrevisto: Number(r.valor_previsto),
     observacoes: r.observacoes ?? undefined,
     status: r.status,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export function mapBudgetItem(r: Row): BudgetItem {
+  return {
+    id: r.id,
+    companyId: r.company_id,
+    eventId: r.event_id,
+    categoria: r.categoria,
+    supplierId: r.supplier_id ?? undefined,
+    descricao: r.descricao,
+    valorCotado: r.valor_cotado != null ? Number(r.valor_cotado) : undefined,
+    valorContratado: r.valor_contratado != null ? Number(r.valor_contratado) : undefined,
+    valorRealizado: r.valor_realizado != null ? Number(r.valor_realizado) : undefined,
+    status: r.status,
+    observacoes: r.observacoes ?? undefined,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
