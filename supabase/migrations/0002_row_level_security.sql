@@ -151,3 +151,24 @@ create policy audit_logs_select on audit_logs for select
 create policy audit_logs_insert on audit_logs for insert
   to authenticated
   with check (company_id = current_profile_company_id());
+
+-- ---------------------------------------------------------------------
+-- Privilégios explícitos na Data API (PostgREST)
+--
+-- O 7Eventos só acessa o Postgres pelo cliente de serviço no servidor
+-- (src/lib/data/supabase/client.ts, service_role — sempre ignora RLS e
+-- não depende de GRANT); nenhum client Supabase no navegador consulta
+-- estas tabelas com JWT de usuário. Como a exposição de tabelas via
+-- Data API passou a ser opt-in em projetos novos do Supabase (e pode
+-- variar por configuração do projeto), revogamos explicitamente de
+-- "authenticated"/"anon" em vez de confiar no default — a intenção
+-- "só o backend acessa" fica registrada no schema, não numa opção do
+-- painel. companies/profiles ficam de fora: o próprio login (Supabase
+-- Auth) e telas de perfil podem precisar de acesso autenticado a elas
+-- no futuro, então mantemos a decisão explícita só nas tabelas
+-- puramente operacionais.
+-- ---------------------------------------------------------------------
+
+revoke all on spaces, events, event_sessions, event_status_history, reservations,
+  checklist_items, budgets, complexity_assessments, audit_logs
+  from authenticated, anon;

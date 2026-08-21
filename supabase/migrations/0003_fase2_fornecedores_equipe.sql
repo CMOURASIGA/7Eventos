@@ -27,7 +27,10 @@ create table if not exists suppliers (
   status text not null default 'ativo' check (status in ('ativo', 'inativo')),
   observacoes text,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  -- Base para FK composta (supplier_id, company_id) -> suppliers em
+  -- event_suppliers, abaixo.
+  constraint suppliers_id_company_unique unique (id, company_id)
 );
 
 create index if not exists idx_suppliers_company on suppliers (company_id);
@@ -42,6 +45,15 @@ create index if not exists idx_suppliers_company_status on suppliers (company_id
 -- mesmo com a UI escondendo o campo. Por isso os valores moram em
 -- event_supplier_financials, com policy de leitura restrita a
 -- Gestor/Admin (ver seção "Row Level Security" abaixo).
+--
+-- event_id/supplier_id/responsavel_interno_id são FK compostas contra
+-- (id, company_id) das tabelas referenciadas, não FK simples de id —
+-- a aplicação já valida isso antes de gravar (src/lib/data/mock e
+-- src/lib/data/supabase), mas o cliente de serviço usado pelo backend
+-- ignora RLS, e a Data API pode ser acessada diretamente por um
+-- usuário autenticado com os UUIDs certos. FK simples deixaria gravar
+-- company_id da Consult com event_id de outra empresa; FK composta
+-- torna essa combinação impossível no próprio banco, não só na app.
 -- ---------------------------------------------------------------------
 
 create type event_supplier_situacao as enum ('previsto', 'contratado', 'confirmado', 'concluido', 'cancelado');
@@ -49,17 +61,29 @@ create type event_supplier_situacao as enum ('previsto', 'contratado', 'confirma
 create table if not exists event_suppliers (
   id uuid primary key default gen_random_uuid(),
   company_id uuid not null references companies (id) on delete cascade,
-  event_id uuid not null references events (id) on delete cascade,
-  supplier_id uuid not null references suppliers (id),
+  event_id uuid not null,
+  supplier_id uuid not null,
   servico text not null,
-  responsavel_interno_id uuid references profiles (id),
+  responsavel_interno_id uuid,
   situacao event_supplier_situacao not null default 'previsto',
   data_inicio timestamptz,
   data_fim timestamptz,
   observacoes text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint event_suppliers_datas check (data_fim is null or data_inicio is null or data_fim > data_inicio)
+  constraint event_suppliers_datas check (data_fim is null or data_inicio is null or data_fim > data_inicio),
+  -- Base para a FK composta de event_supplier_financials, abaixo.
+  constraint event_suppliers_id_company_unique unique (id, company_id),
+  constraint event_suppliers_event_company_fk
+    foreign key (event_id, company_id) references events (id, company_id) on delete cascade,
+  constraint event_suppliers_supplier_company_fk
+    foreign key (supplier_id, company_id) references suppliers (id, company_id),
+  -- Nullable: MATCH SIMPLE (padrão do Postgres) não exige a FK quando
+  -- responsavel_interno_id é null, então "sem responsável" continua
+  -- permitido; quando preenchido, precisa ser um profile da mesma
+  -- empresa.
+  constraint event_suppliers_responsavel_company_fk
+    foreign key (responsavel_interno_id, company_id) references profiles (id, company_id)
 );
 
 create index if not exists idx_event_suppliers_event on event_suppliers (event_id);
@@ -70,11 +94,13 @@ create index if not exists idx_event_suppliers_supplier on event_suppliers (supp
 create index if not exists idx_event_suppliers_company_event on event_suppliers (company_id, event_id);
 
 create table if not exists event_supplier_financials (
-  event_supplier_id uuid primary key references event_suppliers (id) on delete cascade,
+  event_supplier_id uuid primary key,
   company_id uuid not null references companies (id) on delete cascade,
   valor_previsto numeric(14, 2) check (valor_previsto is null or valor_previsto >= 0),
   valor_contratado numeric(14, 2) check (valor_contratado is null or valor_contratado >= 0),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  constraint event_supplier_financials_link_company_fk
+    foreign key (event_supplier_id, company_id) references event_suppliers (id, company_id) on delete cascade
 );
 
 create index if not exists idx_event_supplier_financials_company on event_supplier_financials (company_id);
@@ -88,8 +114,8 @@ create type team_member_status as enum ('convidado', 'confirmado', 'em_atividade
 create table if not exists event_team_members (
   id uuid primary key default gen_random_uuid(),
   company_id uuid not null references companies (id) on delete cascade,
-  event_id uuid not null references events (id) on delete cascade,
-  user_id uuid not null references profiles (id),
+  event_id uuid not null,
+  user_id uuid not null,
   funcao text not null,
   responsabilidade text,
   escala text,
@@ -98,7 +124,11 @@ create table if not exists event_team_members (
   updated_at timestamptz not null default now(),
   -- Mesma pessoa não pode ser alocada duas vezes ao mesmo evento
   -- (a aplicação também valida isso antes do insert).
-  unique (event_id, user_id)
+  unique (event_id, user_id),
+  constraint event_team_members_event_company_fk
+    foreign key (event_id, company_id) references events (id, company_id) on delete cascade,
+  constraint event_team_members_user_company_fk
+    foreign key (user_id, company_id) references profiles (id, company_id)
 );
 
 create index if not exists idx_event_team_members_event on event_team_members (event_id);
@@ -174,3 +204,23 @@ create policy event_team_members_write on event_team_members for all
   to authenticated
   using (company_id = current_profile_company_id() and current_profile_role() in ('admin_empresa', 'gestor_eventos'))
   with check (company_id = current_profile_company_id() and current_profile_role() in ('admin_empresa', 'gestor_eventos'));
+
+-- ---------------------------------------------------------------------
+-- Privilégios explícitos na Data API (PostgREST)
+--
+-- O 7Eventos só acessa o Postgres pelo cliente de serviço no servidor
+-- (src/lib/data/supabase/client.ts, service_role — sempre ignora RLS e
+-- não depende de GRANT). Nenhum código do produto usa um client Supabase
+-- no navegador com JWT de usuário para consultar estas tabelas (a
+-- anon key documentada em .env.example serve só para
+-- auth.signInWithPassword em src/lib/auth/actions.ts, dentro de uma
+-- Server Action — nunca chega ao bundle do cliente). Como a exposição
+-- de tabelas via Data API passou a ser opt-in em projetos novos do
+-- Supabase (e pode variar por configuração do projeto), revogamos
+-- explicitamente de "authenticated"/"anon" em vez de confiar no
+-- default: a intenção "só o backend acessa" fica registrada no schema,
+-- e não depende de nenhuma opção do painel do Supabase.
+-- ---------------------------------------------------------------------
+
+revoke all on suppliers, event_suppliers, event_supplier_financials, event_team_members
+  from authenticated, anon;
