@@ -47,21 +47,31 @@ alter table budgets enable row level security;
 alter table complexity_assessments enable row level security;
 alter table audit_logs enable row level security;
 
+-- Toda policy abaixo é escopada "to authenticated": um papel anônimo
+-- normalmente nem resolveria empresa/perfil (as funções acima
+-- retornariam null), mas restringir explicitamente ao papel
+-- autenticado é a orientação atual do Supabase para RLS, em vez de
+-- depender só do predicado de autorização.
+
 -- companies: superadmin vê todas; demais perfis veem apenas a própria empresa.
 create policy companies_select on companies for select
+  to authenticated
   using (is_superadmin() or id = current_profile_company_id());
 
 -- profiles: usuário vê perfis da própria empresa; superadmin vê todos.
 create policy profiles_select on profiles for select
+  to authenticated
   using (is_superadmin() or company_id = current_profile_company_id());
 
 create policy profiles_insert on profiles for insert
+  to authenticated
   with check (
     is_superadmin()
     or (company_id = current_profile_company_id() and current_profile_role() = 'admin_empresa')
   );
 
 create policy profiles_update on profiles for update
+  to authenticated
   using (
     is_superadmin()
     or (company_id = current_profile_company_id() and current_profile_role() = 'admin_empresa')
@@ -73,53 +83,71 @@ create policy profiles_update on profiles for update
 -- também é aplicada em src/lib/domain/permissions.ts na camada de app).
 
 create policy spaces_select on spaces for select
+  to authenticated
   using (company_id = current_profile_company_id());
 create policy spaces_write on spaces for all
+  to authenticated
   using (company_id = current_profile_company_id() and current_profile_role() <> 'consulta')
   with check (company_id = current_profile_company_id() and current_profile_role() <> 'consulta');
 
 create policy events_select on events for select
+  to authenticated
   using (company_id = current_profile_company_id());
 create policy events_write on events for all
+  to authenticated
   using (company_id = current_profile_company_id() and current_profile_role() <> 'consulta')
   with check (company_id = current_profile_company_id() and current_profile_role() <> 'consulta');
 
 create policy event_sessions_select on event_sessions for select
+  to authenticated
   using (exists (select 1 from events e where e.id = event_id and e.company_id = current_profile_company_id()));
 create policy event_sessions_write on event_sessions for all
+  to authenticated
   using (exists (select 1 from events e where e.id = event_id and e.company_id = current_profile_company_id() and current_profile_role() <> 'consulta'))
   with check (exists (select 1 from events e where e.id = event_id and e.company_id = current_profile_company_id() and current_profile_role() <> 'consulta'));
 
 create policy event_status_history_select on event_status_history for select
+  to authenticated
   using (company_id = current_profile_company_id());
 create policy event_status_history_insert on event_status_history for insert
+  to authenticated
   with check (company_id = current_profile_company_id() and current_profile_role() <> 'consulta');
 
 create policy reservations_select on reservations for select
+  to authenticated
   using (company_id = current_profile_company_id());
 create policy reservations_write on reservations for all
+  to authenticated
   using (company_id = current_profile_company_id() and current_profile_role() <> 'consulta')
   with check (company_id = current_profile_company_id() and current_profile_role() <> 'consulta');
 
 create policy checklist_items_select on checklist_items for select
+  to authenticated
   using (company_id = current_profile_company_id());
 create policy checklist_items_write on checklist_items for all
+  to authenticated
   using (company_id = current_profile_company_id() and current_profile_role() <> 'consulta')
   with check (company_id = current_profile_company_id() and current_profile_role() <> 'consulta');
 
 create policy budgets_select on budgets for select
+  to authenticated
   using (company_id = current_profile_company_id());
 create policy budgets_write on budgets for all
+  to authenticated
   using (company_id = current_profile_company_id() and current_profile_role() in ('admin_empresa', 'gestor_eventos'))
   with check (company_id = current_profile_company_id() and current_profile_role() in ('admin_empresa', 'gestor_eventos'));
 
 create policy complexity_assessments_select on complexity_assessments for select
+  to authenticated
   using (company_id = current_profile_company_id());
 create policy complexity_assessments_write on complexity_assessments for all
+  to authenticated
   using (company_id = current_profile_company_id() and current_profile_role() in ('admin_empresa', 'gestor_eventos'))
   with check (company_id = current_profile_company_id() and current_profile_role() in ('admin_empresa', 'gestor_eventos'));
 
 create policy audit_logs_select on audit_logs for select
+  to authenticated
   using (company_id = current_profile_company_id() and current_profile_role() in ('admin_empresa', 'gestor_eventos'));
 create policy audit_logs_insert on audit_logs for insert
+  to authenticated
   with check (company_id = current_profile_company_id());

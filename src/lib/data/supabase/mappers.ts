@@ -192,7 +192,15 @@ export function mapSupplier(r: Row): Supplier {
   };
 }
 
-export function mapEventSupplier(r: Row): EventSupplier {
+/**
+ * Valores financeiros (valor_previsto/valor_contratado) vivem em
+ * `event_supplier_financials`, tabela própria com RLS restrita a
+ * Gestor/Admin — não em `event_suppliers` (ver
+ * supabase/migrations/0003_fase2_fornecedores_equipe.sql). `financials`
+ * vem de uma segunda consulta, já filtrada por "view_financials" na
+ * camada de aplicação; ausente/null aqui = valores não vazam ao mapear.
+ */
+export function mapEventSupplier(r: Row, financials?: Row | null): EventSupplier {
   return {
     id: r.id,
     companyId: r.company_id,
@@ -200,8 +208,8 @@ export function mapEventSupplier(r: Row): EventSupplier {
     supplierId: r.supplier_id,
     servico: r.servico,
     responsavelInternoId: r.responsavel_interno_id ?? undefined,
-    valorPrevisto: r.valor_previsto != null ? Number(r.valor_previsto) : undefined,
-    valorContratado: r.valor_contratado != null ? Number(r.valor_contratado) : undefined,
+    valorPrevisto: financials?.valor_previsto != null ? Number(financials.valor_previsto) : undefined,
+    valorContratado: financials?.valor_contratado != null ? Number(financials.valor_contratado) : undefined,
     situacao: r.situacao,
     dataInicio: r.data_inicio ?? undefined,
     dataFim: r.data_fim ?? undefined,

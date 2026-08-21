@@ -270,7 +270,7 @@ export interface Repository {
     update(
       session: AuthSession,
       id: string,
-      input: Partial<Omit<EventTeamMember, "id" | "companyId" | "eventId">>,
+      input: Partial<Omit<EventTeamMember, "id" | "companyId" | "eventId" | "userId">>,
     ): Promise<EventTeamMember>;
     remove(session: AuthSession, id: string): Promise<void>;
   };

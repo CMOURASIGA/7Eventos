@@ -561,22 +561,39 @@ export const mockRepository: Repository = {
     async listByEvent(session, eventId) {
       const store = getStore();
       const companyId = requireCompany(session);
-      return store.eventSuppliers
+      const items = store.eventSuppliers
         .filter((es) => es.eventId === eventId && es.companyId === companyId)
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      // Mesmo em memória, a camada de dados já sai sem os valores para
+      // quem não tem "view_financials" — a UI não é a única linha de
+      // defesa (equivalente à separação em tabela própria no Supabase).
+      if (can(session.perfil, "view_financials")) return items;
+      return items.map((es) => ({ ...es, valorPrevisto: undefined, valorContratado: undefined }));
     },
     async create(session, input) {
       assertCan(session.perfil, "manage_suppliers");
       const store = getStore();
       const companyId = requireCompany(session);
+      // RN01: evento, fornecedor e responsável interno precisam
+      // pertencer à mesma empresa da sessão — a UI só oferece opções
+      // corretas, mas o backend não pode confiar só nisso.
+      const event = store.events.find((e) => e.id === input.eventId && e.companyId === companyId);
+      if (!event) throw new Error("Evento não encontrado.");
+      const supplier = store.suppliers.find((s) => s.id === input.supplierId && s.companyId === companyId);
+      if (!supplier) throw new Error("Fornecedor não encontrado nesta empresa.");
+      if (input.responsavelInternoId) {
+        const responsavel = store.users.find((u) => u.id === input.responsavelInternoId && u.companyId === companyId);
+        if (!responsavel) throw new Error("Responsável interno inválido para esta empresa.");
+      }
+      if (input.valorPrevisto != null && input.valorPrevisto < 0) throw new Error("Valor previsto não pode ser negativo.");
+      if (input.valorContratado != null && input.valorContratado < 0) throw new Error("Valor contratado não pode ser negativo.");
       const link: EventSupplier = { id: nextId("event_supplier"), companyId, createdAt: nowIso(), updatedAt: nowIso(), ...input };
       store.eventSuppliers.push(link);
-      const supplier = store.suppliers.find((s) => s.id === input.supplierId);
       pushAudit(session, {
         acao: "criacao",
         entidade: "fornecedor_evento",
         entidadeId: link.id,
-        descricao: `Fornecedor "${supplier?.nome ?? input.supplierId}" vinculado ao evento (${input.servico}).`,
+        descricao: `Fornecedor "${supplier.nome}" vinculado ao evento (${input.servico}).`,
       });
       return link;
     },
@@ -586,6 +603,12 @@ export const mockRepository: Repository = {
       const companyId = requireCompany(session);
       const link = store.eventSuppliers.find((es) => es.id === id && es.companyId === companyId);
       if (!link) throw new Error("Vínculo de fornecedor não encontrado.");
+      if (input.responsavelInternoId) {
+        const responsavel = store.users.find((u) => u.id === input.responsavelInternoId && u.companyId === companyId);
+        if (!responsavel) throw new Error("Responsável interno inválido para esta empresa.");
+      }
+      if (input.valorPrevisto != null && input.valorPrevisto < 0) throw new Error("Valor previsto não pode ser negativo.");
+      if (input.valorContratado != null && input.valorContratado < 0) throw new Error("Valor contratado não pode ser negativo.");
       Object.assign(link, input, { updatedAt: nowIso() });
       pushAudit(session, { acao: "edicao", entidade: "fornecedor_evento", entidadeId: link.id, descricao: "Vínculo de fornecedor atualizado." });
       return link;
@@ -610,14 +633,20 @@ export const mockRepository: Repository = {
       assertCan(session.perfil, "manage_team");
       const store = getStore();
       const companyId = requireCompany(session);
+      const event = store.events.find((e) => e.id === input.eventId && e.companyId === companyId);
+      if (!event) throw new Error("Evento não encontrado.");
+      const user = store.users.find((u) => u.id === input.userId && u.companyId === companyId);
+      if (!user) throw new Error("Usuário não encontrado nesta empresa.");
+      if (user.status !== "ativo") throw new Error("Usuário inativo não pode ser alocado à equipe.");
+      const duplicate = store.teamMembers.find((m) => m.eventId === input.eventId && m.userId === input.userId);
+      if (duplicate) throw new Error("Este usuário já está alocado à equipe deste evento.");
       const member: EventTeamMember = { id: nextId("team_member"), companyId, createdAt: nowIso(), updatedAt: nowIso(), ...input };
       store.teamMembers.push(member);
-      const user = store.users.find((u) => u.id === input.userId);
       pushAudit(session, {
         acao: "criacao",
         entidade: "equipe_evento",
         entidadeId: member.id,
-        descricao: `${user?.nome ?? "Usuário"} adicionado à equipe do evento como ${input.funcao}.`,
+        descricao: `${user.nome} adicionado à equipe do evento como ${input.funcao}.`,
       });
       return member;
     },
