@@ -47,3 +47,15 @@ export const CATEGORIAS_FORNECEDOR = [
   "Infraestrutura",
   "Outros",
 ] as const;
+
+/** Fase 2 - categorias do cadastro de participantes. */
+export const CATEGORIAS_PARTICIPANTE = [
+  "Convidado",
+  "Palestrante",
+  "Imprensa",
+  "Patrocinador",
+  "Equipe interna",
+  "VIP",
+  "Público geral",
+  "Outros",
+] as const;

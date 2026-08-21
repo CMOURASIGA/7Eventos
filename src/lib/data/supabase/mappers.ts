@@ -6,9 +6,11 @@ import type {
   ComplexityAssessment,
   EventDocument,
   EventEntity,
+  EventRegistration,
   EventSession,
   EventSupplier,
   EventTeamMember,
+  Participant,
   Reservation,
   ScheduleItem,
   Space,
@@ -231,6 +233,38 @@ export function mapEventTeamMember(r: Row): EventTeamMember {
     responsabilidade: r.responsabilidade ?? undefined,
     escala: r.escala ?? undefined,
     status: r.status,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export function mapParticipant(r: Row): Participant {
+  return {
+    id: r.id,
+    companyId: r.company_id,
+    nome: r.nome,
+    email: r.email,
+    telefone: r.telefone ?? undefined,
+    organizacao: r.organizacao ?? undefined,
+    categoria: r.categoria ?? undefined,
+    status: r.status,
+    observacoes: r.observacoes ?? undefined,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export function mapEventRegistration(r: Row): EventRegistration {
+  return {
+    id: r.id,
+    companyId: r.company_id,
+    eventId: r.event_id,
+    participantId: r.participant_id,
+    lote: r.lote ?? undefined,
+    categoria: r.categoria ?? undefined,
+    status: r.status,
+    checkInAt: r.check_in_at ?? undefined,
+    checkInPorId: r.check_in_por_id ?? undefined,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };

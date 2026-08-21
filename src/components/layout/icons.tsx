@@ -121,4 +121,15 @@ export const ICONS: Record<string, (props?: SVGProps<SVGSVGElement>) => React.JS
       <circle cx="17" cy="19.5" r="1.6" />
     </svg>
   ),
+  // Crachá de credenciamento — distinto do ícone "users" (Administração
+  // de usuários da empresa), já que Participantes é um público externo
+  // ao evento, não a equipe que opera o sistema.
+  participants: (p) => (
+    <svg {...common} {...p}>
+      <rect x="5" y="2.5" width="14" height="19" rx="2" />
+      <path d="M9 2.5V5a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V2.5" />
+      <circle cx="12" cy="12" r="2.6" />
+      <path d="M8 18c.7-2 2.2-3 4-3s3.3 1 4 3" />
+    </svg>
+  ),
 };

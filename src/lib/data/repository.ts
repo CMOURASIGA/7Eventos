@@ -9,10 +9,13 @@ import type {
   ComplexityFactors,
   EventDocument,
   EventEntity,
+  EventRegistration,
   EventSession,
   EventStatus,
   EventSupplier,
   EventTeamMember,
+  Participant,
+  ParticipantStatus,
   Reservation,
   ScheduleItem,
   Space,
@@ -57,6 +60,12 @@ export interface SupplierSearchFilters {
   nome?: string;
   categoria?: string;
   status?: SupplierStatus;
+}
+
+export interface ParticipantSearchFilters {
+  nome?: string;
+  categoria?: string;
+  status?: ParticipantStatus;
 }
 
 export interface ReservationSearchFilters {
@@ -274,6 +283,48 @@ export interface Repository {
       id: string,
       input: Partial<Omit<EventTeamMember, "id" | "companyId" | "eventId" | "userId">>,
     ): Promise<EventTeamMember>;
+    remove(session: AuthSession, id: string): Promise<void>;
+  };
+
+  // Participantes (Fase 2) --------------------------------------------------
+  participants: {
+    list(session: AuthSession, filters?: ParticipantSearchFilters): Promise<Participant[]>;
+    get(session: AuthSession, id: string): Promise<Participant | null>;
+    create(
+      session: AuthSession,
+      input: Omit<Participant, "id" | "companyId" | "createdAt" | "updatedAt">,
+    ): Promise<Participant>;
+    update(
+      session: AuthSession,
+      id: string,
+      input: Partial<Omit<Participant, "id" | "companyId">>,
+    ): Promise<Participant>;
+    setStatus(
+      session: AuthSession,
+      id: string,
+      status: ParticipantStatus,
+    ): Promise<Participant>;
+  };
+
+  // Inscrição + Credenciamento (Fase 2) --------------------------------------
+  registrations: {
+    listByEvent(session: AuthSession, eventId: string): Promise<EventRegistration[]>;
+    create(
+      session: AuthSession,
+      input: Omit<
+        EventRegistration,
+        "id" | "companyId" | "status" | "checkInAt" | "checkInPorId" | "createdAt" | "updatedAt"
+      >,
+    ): Promise<EventRegistration>;
+    updateStatus(
+      session: AuthSession,
+      id: string,
+      status: EventRegistration["status"],
+    ): Promise<EventRegistration>;
+    /** Credenciamento: registra checkInAt=agora e checkInPorId=usuário da sessão. Exige inscrição confirmada. */
+    checkIn(session: AuthSession, id: string): Promise<EventRegistration>;
+    /** Desfaz um check-in registrado por engano. */
+    undoCheckIn(session: AuthSession, id: string): Promise<EventRegistration>;
     remove(session: AuthSession, id: string): Promise<void>;
   };
 
