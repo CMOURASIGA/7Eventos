@@ -1140,6 +1140,17 @@ export const mockRepository: Repository = {
       const store = getStore();
       return store.auditLogs[store.auditLogs.length - 1];
     },
+    async countInteractions(session, filters) {
+      const store = getStore();
+      const companyId = requireCompany(session);
+      const items = store.auditLogs.filter(
+        (a) => a.companyId === companyId && a.acao === filters.acao && a.createdAt >= filters.sinceIso,
+      );
+      return {
+        totalCompany: items.length,
+        totalUser: items.filter((a) => a.userId === session.userId).length,
+      };
+    },
   },
 
   dashboard: {

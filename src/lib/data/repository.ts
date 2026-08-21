@@ -513,6 +513,17 @@ export interface Repository {
       session: AuthSession,
       entry: Omit<AuditLog, "id" | "companyId" | "userId" | "createdAt">,
     ): Promise<AuditLog>;
+    /**
+     * Contagem agregada de interações recentes (ex: "interacao_ia"), usada
+     * defensivamente pelo próprio sistema para rate limiting (Fase 3 -
+     * docs/FASE_03_ATLAS.md seção 13). Deliberadamente sem "view_audit":
+     * não expõe conteúdo de nenhum registro, só contagens — diferente de
+     * audit.list(), que é a consulta de auditoria de verdade.
+     */
+    countInteractions(
+      session: AuthSession,
+      filters: { acao: AuditAction; sinceIso: string },
+    ): Promise<{ totalCompany: number; totalUser: number }>;
   };
 
   // Dashboard / relatórios --------------------------------------------------
