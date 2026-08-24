@@ -47,7 +47,7 @@ export default async function EventAtlasPage({ params }: { params: Promise<{ id:
 
       {isAtlasConfigured() ? (
         <>
-          <AtlasPanel eventId={id} />
+          <AtlasPanel eventId={id} canViewFinancials={Boolean(context?.financeiroDetalhado)} />
           <Card>
             <div className="p-5 flex items-center justify-between gap-4">
               <div>

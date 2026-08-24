@@ -12,14 +12,20 @@ import type { AtlasBriefing } from "@/lib/atlas/types";
  * padrão (<details>) por ser o conteúdo mais longo da página.
  */
 export function BriefingCard({ briefing }: { briefing: AtlasBriefing }) {
+  // Ressalva do validador: quem não tem view_financials (briefing.orcamento
+  // null) não deveria ver "orçamento" anunciado na descrição — gera
+  // expectativa de um dado que a seção abaixo não vai mostrar.
+  const descricaoSecoes = [
+    "Objetivo, agenda, espaço, equipe, fornecedores, cronograma, checklist, participantes, riscos",
+    briefing.orcamento ? ", orçamento" : "",
+    " e contatos essenciais — consolidado em um só lugar. Clique para expandir.",
+  ].join("");
+
   return (
     <Card>
       <details>
         <summary className="cursor-pointer list-none">
-          <CardHeader
-            title="Briefing operacional"
-            description="Objetivo, agenda, espaço, equipe, fornecedores, cronograma, checklist, participantes, riscos, orçamento e contatos essenciais — consolidado em um só lugar. Clique para expandir."
-          />
+          <CardHeader title="Briefing operacional" description={descricaoSecoes} />
         </summary>
         <div className="p-5 space-y-6 text-sm">
           <Secao titulo="Evento">
