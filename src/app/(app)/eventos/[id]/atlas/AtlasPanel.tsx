@@ -20,14 +20,19 @@ const SUGGESTED_QUESTIONS = [
   "O que está pendente?",
   "O que está atrasado?",
   "Quais são os principais riscos?",
-  "Como está o orçamento?",
 ];
 
-export function AtlasPanel({ eventId }: { eventId: string }) {
+const FINANCIAL_SUGGESTED_QUESTION = "Como está o orçamento?";
+
+export function AtlasPanel({ eventId, canViewFinancials }: { eventId: string; canViewFinancials: boolean }) {
   const [messages, setMessages] = useState<AtlasChatTurn[]>([]);
   const [input, setInput] = useState("");
   const [chatError, setChatError] = useState<string | null>(null);
   const [chatPending, startChatTransition] = useTransition();
+  // Ressalva do validador: quem não tem view_financials não deveria nem
+  // ver um atalho sugerindo pergunta financeira — gera expectativa de
+  // acesso que a resposta do Atlas depois nega (financeiroDetalhado null).
+  const suggestedQuestions = canViewFinancials ? [...SUGGESTED_QUESTIONS, FINANCIAL_SUGGESTED_QUESTION] : SUGGESTED_QUESTIONS;
 
   const [summary, setSummary] = useState<AtlasSummary | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
@@ -93,7 +98,7 @@ export function AtlasPanel({ eventId }: { eventId: string }) {
         <div className="p-5 space-y-4">
           {messages.length === 0 && !chatPending ? (
             <div className="flex flex-wrap gap-2">
-              {SUGGESTED_QUESTIONS.map((q) => (
+              {suggestedQuestions.map((q) => (
                 <button
                   key={q}
                   type="button"
