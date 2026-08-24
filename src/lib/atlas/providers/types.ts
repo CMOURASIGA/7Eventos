@@ -45,10 +45,36 @@ export interface AtlasStructuredResult<T> {
   responseId?: string;
 }
 
+export interface AtlasTranscribeRequest {
+  audioBuffer: ArrayBuffer;
+  mimeType: string;
+}
+
+export interface AtlasTranscribeResult {
+  text: string;
+  provider: string;
+  model: string;
+}
+
+export interface AtlasSpeechRequest {
+  text: string;
+}
+
+export interface AtlasSpeechResult {
+  audioBuffer: ArrayBuffer;
+  contentType: string;
+  provider: string;
+  model: string;
+}
+
 export interface AtlasAIProvider {
   readonly name: string;
   /** Sempre lança AtlasProviderError em caso de falha — nunca deixa vazar o erro nativo do SDK. */
   generateText(input: AtlasTextRequest): Promise<AtlasTextResult>;
   /** Sempre lança AtlasProviderError em caso de falha — nunca deixa vazar o erro nativo do SDK. */
   generateStructured<T>(input: AtlasStructuredRequest<T>): Promise<AtlasStructuredResult<T>>;
+  /** Voice Room (seção 11) - fala do usuário -> texto. Sempre lança AtlasProviderError em caso de falha. */
+  transcribeAudio(input: AtlasTranscribeRequest): Promise<AtlasTranscribeResult>;
+  /** Voice Room (seção 11) - resposta do Atlas -> áudio. Sempre lança AtlasProviderError em caso de falha. */
+  synthesizeSpeech(input: AtlasSpeechRequest): Promise<AtlasSpeechResult>;
 }

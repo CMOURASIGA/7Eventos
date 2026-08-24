@@ -1,5 +1,6 @@
 import "server-only";
 import OpenAI from "openai";
+import { toFile } from "openai/uploads";
 import { zodTextFormat } from "openai/helpers/zod";
 import { AtlasProviderError } from "../errors";
 import type {
@@ -8,10 +9,17 @@ import type {
   AtlasTextResult,
   AtlasStructuredRequest,
   AtlasStructuredResult,
+  AtlasTranscribeRequest,
+  AtlasTranscribeResult,
+  AtlasSpeechRequest,
+  AtlasSpeechResult,
 } from "./types";
 
 const DEFAULT_MODEL = "gpt-5.6-terra";
 const DEFAULT_REASONING_EFFORT = "low";
+const DEFAULT_STT_MODEL = "gpt-4o-mini-transcribe";
+const DEFAULT_TTS_MODEL = "gpt-4o-mini-tts";
+const DEFAULT_TTS_VOICE = "sage";
 
 function getModel(): string {
   return process.env.OPENAI_MODEL?.trim() || DEFAULT_MODEL;
@@ -23,6 +31,18 @@ function getReasoningEffort(): OpenAI.Reasoning["effort"] {
   return (allowed as readonly string[]).includes(value ?? "")
     ? (value as OpenAI.Reasoning["effort"])
     : DEFAULT_REASONING_EFFORT;
+}
+
+function getSttModel(): string {
+  return process.env.OPENAI_STT_MODEL?.trim() || DEFAULT_STT_MODEL;
+}
+
+function getTtsModel(): string {
+  return process.env.OPENAI_TTS_MODEL?.trim() || DEFAULT_TTS_MODEL;
+}
+
+function getTtsVoice(): string {
+  return process.env.OPENAI_TTS_VOICE?.trim() || DEFAULT_TTS_VOICE;
 }
 
 let cachedClient: OpenAI | null = null;
@@ -169,6 +189,72 @@ async function generateStructured<T>(input: AtlasStructuredRequest<T>): Promise<
   };
 }
 
+/**
+ * Voice Room (seção 11) - fala do usuário -> texto, via Whisper
+ * (client.audio.transcriptions.create). O áudio nunca é persistido —
+ * chega em memória, vira texto, e o buffer é descartado ao final desta
+ * função (mesma regra de "minimizar contexto"/"evitar persistir conteúdo
+ * sensível desnecessário" das seções 9/14).
+ */
+async function transcribeAudio(input: AtlasTranscribeRequest): Promise<AtlasTranscribeResult> {
+  const client = getClient();
+  const model = getSttModel();
+  let response: OpenAI.Audio.Transcriptions.Transcription;
+  try {
+    const file = await toFile(Buffer.from(input.audioBuffer), `voice-input.${inferAudioExtension(input.mimeType)}`, {
+      type: input.mimeType || "audio/webm",
+    });
+    response = await client.audio.transcriptions.create({ file, model, language: "pt" });
+  } catch (err) {
+    throw wrapSdkError(err);
+  }
+
+  const text = response.text?.trim();
+  if (!text) {
+    throw new AtlasProviderError("Não foi possível entender o áudio. Tente falar novamente.", "empty_response", true);
+  }
+
+  return { text, provider: "openai", model };
+}
+
+function inferAudioExtension(mimeType: string): string {
+  const value = mimeType.toLowerCase();
+  if (value.includes("webm")) return "webm";
+  if (value.includes("wav")) return "wav";
+  if (value.includes("mpeg") || value.includes("mp3")) return "mp3";
+  if (value.includes("ogg")) return "ogg";
+  if (value.includes("mp4")) return "mp4";
+  return "webm";
+}
+
+/**
+ * Voice Room (seção 11) - resposta do Atlas -> áudio, via
+ * client.audio.speech.create. Recebe o texto já gerado por askAtlas()
+ * (mesmo "cérebro" do chat de texto) — esta função só converte para voz.
+ */
+async function synthesizeSpeech(input: AtlasSpeechRequest): Promise<AtlasSpeechResult> {
+  const client = getClient();
+  const model = getTtsModel();
+  let response: Response;
+  try {
+    response = await client.audio.speech.create({
+      model,
+      voice: getTtsVoice() as OpenAI.Audio.SpeechCreateParams["voice"],
+      input: input.text,
+      response_format: "mp3",
+    });
+  } catch (err) {
+    throw wrapSdkError(err);
+  }
+
+  const audioBuffer = await response.arrayBuffer();
+  if (audioBuffer.byteLength === 0) {
+    throw new AtlasProviderError("O Atlas não conseguiu gerar o áudio da resposta desta vez.", "empty_response", true);
+  }
+
+  return { audioBuffer, contentType: "audio/mpeg", provider: "openai", model };
+}
+
 export function createOpenAIProvider(): AtlasAIProvider {
-  return { name: "openai", generateText, generateStructured };
+  return { name: "openai", generateText, generateStructured, transcribeAudio, synthesizeSpeech };
 }
