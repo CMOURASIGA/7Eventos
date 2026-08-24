@@ -4,21 +4,17 @@ import type { AuthSession } from "@/lib/domain/types";
 import type { Repository } from "@/lib/data/repository";
 import { collectEventContext } from "./context";
 import { buildAtlasSystemPrompt } from "./prompt";
-import { getAtlasClient, getAtlasModel } from "./client";
+import { getAtlasProvider } from "./providers";
 import { acquireAtlasCall, releaseAtlasCall } from "./limiter";
+import { AtlasValidationError, classifyAtlasError } from "./errors";
+import { recordAtlasAudit } from "./audit";
 import type { AtlasAnswer, AtlasChatTurn } from "./types";
 
 const MAX_HISTORY_TURNS = 12;
 const MAX_TURN_CONTENT_LENGTH = 4000;
 const MAX_QUESTION_LENGTH = 2000;
 const MAX_TOTAL_HISTORY_CHARS = 20000;
-
-export class AtlasValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "AtlasValidationError";
-  }
-}
+const MAX_OUTPUT_TOKENS = 2000;
 
 /**
  * Bloqueador do validador: a Server Action recebe o histórico de volta
@@ -33,6 +29,10 @@ const AtlasChatTurnSchema = z.object({
   content: z.string().min(1).max(MAX_TURN_CONTENT_LENGTH),
 });
 const AtlasHistorySchema = z.array(AtlasChatTurnSchema).max(MAX_HISTORY_TURNS);
+// Ressalva do validador: a pergunta também era só truncada em silêncio
+// (question.slice(0, N)), o que podia mudar o sentido de uma pergunta
+// longa sem avisar. Agora segue o mesmo padrão do histórico: rejeita.
+const AtlasQuestionSchema = z.string().trim().min(1, "Pergunta vazia.").max(MAX_QUESTION_LENGTH, "Pergunta muito longa.");
 
 function validateHistory(history: unknown): AtlasChatTurn[] {
   const result = AtlasHistorySchema.safeParse(history);
@@ -42,6 +42,18 @@ function validateHistory(history: unknown): AtlasChatTurn[] {
   const totalChars = result.data.reduce((sum, turn) => sum + turn.content.length, 0);
   if (totalChars > MAX_TOTAL_HISTORY_CHARS) {
     throw new AtlasValidationError("A conversa ficou muito longa para continuar. Comece uma nova conversa.");
+  }
+  return result.data;
+}
+
+function validateQuestion(question: unknown): string {
+  const result = AtlasQuestionSchema.safeParse(question);
+  if (!result.success) {
+    throw new AtlasValidationError(
+      result.error.issues[0]?.message === "Pergunta vazia."
+        ? "Pergunta vazia."
+        : `Sua pergunta excede o tamanho máximo permitido (${MAX_QUESTION_LENGTH} caracteres).`,
+    );
   }
   return result.data;
 }
@@ -61,21 +73,19 @@ function validateHistory(history: unknown): AtlasChatTurn[] {
 export async function askAtlas(
   session: AuthSession,
   eventId: string,
-  question: string,
+  rawQuestion: unknown,
   rawHistory: unknown,
   repository: Repository,
 ): Promise<AtlasAnswer> {
   const history = validateHistory(rawHistory);
-
-  const trimmedQuestion = question.trim().slice(0, MAX_QUESTION_LENGTH);
-  if (!trimmedQuestion) {
-    throw new AtlasValidationError("Pergunta vazia.");
-  }
+  const question = validateQuestion(rawQuestion);
 
   await acquireAtlasCall(session, repository);
   const startedAt = Date.now();
   let inputTokens = 0;
   let outputTokens = 0;
+  let model = "desconhecido";
+  let responseId: string | undefined;
   let context: Awaited<ReturnType<typeof collectEventContext>> = null;
 
   try {
@@ -87,42 +97,40 @@ export async function askAtlas(
     const user = await repository.users.get(session, session.userId);
     const systemPrompt = buildAtlasSystemPrompt(context, user?.nome ?? "usuário");
 
-    const client = getAtlasClient();
-    const model = getAtlasModel();
+    const provider = getAtlasProvider();
     // Controle de consumo (seção 13): só os últimos N turnos entram na
     // chamada — uma conversa longa não cresce sem limite a cada pergunta.
     const recentHistory = history.slice(-MAX_HISTORY_TURNS);
 
-    const response = await client.messages.create({
-      model,
-      max_tokens: 2000,
-      system: systemPrompt,
-      messages: [
-        ...recentHistory.map((turn) => ({ role: turn.role, content: turn.content })),
-        { role: "user" as const, content: trimmedQuestion },
-      ],
+    const result = await provider.generateText({
+      systemPrompt,
+      messages: [...recentHistory, { role: "user", content: question }],
+      maxOutputTokens: MAX_OUTPUT_TOKENS,
     });
 
-    inputTokens = response.usage?.input_tokens ?? 0;
-    outputTokens = response.usage?.output_tokens ?? 0;
-
-    const textBlock = response.content.find((b) => b.type === "text");
-    const resposta = textBlock?.text?.trim() || "Não consegui montar uma resposta para essa pergunta.";
+    inputTokens = result.inputTokens;
+    outputTokens = result.outputTokens;
+    model = result.model;
+    responseId = result.responseId;
 
     await recordAtlasAudit(session, repository, {
       entidade: "atlas_pergunta",
       entidadeId: eventId,
       descricao: `Pergunta ao Atlas sobre o evento "${context.evento.titulo}".`,
       status: "sucesso",
+      consomeCota: true,
+      provider: result.provider,
       model,
+      responseId,
       inputTokens,
       outputTokens,
       durationMs: Date.now() - startedAt,
-      question: trimmedQuestion,
+      question,
     });
 
-    return { resposta };
+    return { resposta: result.text };
   } catch (err) {
+    const { codigoErro, consomeCota } = classifyAtlasError(err);
     await recordAtlasAudit(session, repository, {
       entidade: "atlas_pergunta",
       entidadeId: eventId,
@@ -130,68 +138,17 @@ export async function askAtlas(
         ? `Falha ao responder pergunta do Atlas sobre o evento "${context.evento.titulo}".`
         : "Falha ao responder pergunta do Atlas.",
       status: "falha",
-      model: getAtlasModel(),
+      consomeCota,
+      model,
+      responseId,
       inputTokens,
       outputTokens,
       durationMs: Date.now() - startedAt,
-      question: trimmedQuestion,
-      errorCode: errorCode(err),
+      question,
+      errorCode: codigoErro,
     });
     throw err;
   } finally {
     releaseAtlasCall(session);
   }
-}
-
-function errorCode(err: unknown): string {
-  if (err instanceof AtlasValidationError) return "validation_error";
-  if (err instanceof Error) return err.name || "unknown_error";
-  return "unknown_error";
-}
-
-/**
- * Auditoria da IA (seção 14): registra sucesso E falha (antes desta
- * correção, só sucesso era auditado — falhas de validação/API/parse
- * ficavam invisíveis). A pergunta é truncada antes de persistir
- * ("evitar persistir conteúdo sensível desnecessário", seção 14).
- */
-export async function recordAtlasAudit(
-  session: AuthSession,
-  repository: Repository,
-  params: {
-    entidade: string;
-    entidadeId: string;
-    descricao: string;
-    status: "sucesso" | "falha";
-    model: string;
-    inputTokens: number;
-    outputTokens: number;
-    durationMs: number;
-    question?: string;
-    errorCode?: string;
-  },
-): Promise<void> {
-  const QUESTION_PREVIEW_LENGTH = 80;
-  await repository.audit.record(session, {
-    acao: "interacao_ia",
-    entidade: params.entidade,
-    entidadeId: params.entidadeId,
-    descricao: params.descricao,
-    metadados: {
-      status: params.status,
-      modelo: params.model,
-      tokensEntrada: params.inputTokens,
-      tokensSaida: params.outputTokens,
-      duracaoMs: params.durationMs,
-      ...(params.question
-        ? {
-            perguntaPrevia:
-              params.question.length > QUESTION_PREVIEW_LENGTH
-                ? `${params.question.slice(0, QUESTION_PREVIEW_LENGTH)}…`
-                : params.question,
-          }
-        : {}),
-      ...(params.errorCode ? { codigoErro: params.errorCode } : {}),
-    },
-  });
 }

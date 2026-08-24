@@ -2,9 +2,9 @@
 
 import { requireAuthSession } from "@/lib/auth/session";
 import { getRepository } from "@/lib/data";
-import { askAtlas, AtlasValidationError } from "@/lib/atlas/chat";
+import { askAtlas } from "@/lib/atlas/chat";
 import { generateExecutiveSummary, type AtlasSummary } from "@/lib/atlas/summary";
-import { AtlasNotConfiguredError } from "@/lib/atlas/client";
+import { AtlasNotConfiguredError, AtlasValidationError, AtlasProviderError } from "@/lib/atlas/errors";
 import { AtlasRateLimitError } from "@/lib/atlas/limiter";
 import type { AtlasChatTurn } from "@/lib/atlas/types";
 
@@ -16,9 +16,11 @@ import type { AtlasChatTurn } from "@/lib/atlas/types";
  *
  * Sanitização de erros (apontada pelo validador): só as classes de erro
  * do próprio Atlas — escritas por nós, com mensagens já pensadas para o
- * usuário final — têm a mensagem repassada à UI. Qualquer outro erro
- * (SDK, rede, parsing inesperado) vira uma mensagem genérica; o detalhe
- * completo só vai para o log do servidor, nunca para o cliente.
+ * usuário final (AtlasProviderError inclusive: o provedor já traduz o
+ * erro do SDK para uma mensagem segura antes de lançar) — têm a
+ * mensagem repassada à UI. Qualquer outro erro (SDK não mapeado, rede,
+ * parsing inesperado) vira uma mensagem genérica; o detalhe completo só
+ * vai para o log do servidor, nunca para o cliente.
  */
 
 export type AskAtlasResult = { ok: true; resposta: string } | { ok: false; error: string };
@@ -57,9 +59,10 @@ function atlasErrorMessage(err: unknown): string {
   if (err instanceof AtlasNotConfiguredError) return err.message;
   if (err instanceof AtlasRateLimitError) return err.message;
   if (err instanceof AtlasValidationError) return err.message;
-  // Erro inesperado (SDK, rede, parsing): nunca expor err.message ao
-  // cliente — pode carregar detalhe técnico interno. O log completo fica
-  // só no servidor.
+  if (err instanceof AtlasProviderError) return err.message;
+  // Erro inesperado (SDK não mapeado, rede, parsing): nunca expor
+  // err.message ao cliente — pode carregar detalhe técnico interno. O
+  // log completo fica só no servidor.
   console.error("[atlas] erro inesperado:", err);
   return GENERIC_ERROR_MESSAGE;
 }

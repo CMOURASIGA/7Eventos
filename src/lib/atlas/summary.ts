@@ -1,18 +1,20 @@
 import "server-only";
 import { z } from "zod";
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import type { AuthSession } from "@/lib/domain/types";
 import type { Repository } from "@/lib/data/repository";
 import { collectEventContext } from "./context";
 import { buildAtlasSystemPrompt } from "./prompt";
-import { getAtlasClient, getAtlasModel } from "./client";
+import { getAtlasProvider } from "./providers";
 import { acquireAtlasCall, releaseAtlasCall } from "./limiter";
-import { AtlasValidationError, recordAtlasAudit } from "./chat";
+import { AtlasValidationError, classifyAtlasError } from "./errors";
+import { recordAtlasAudit } from "./audit";
+
+const MAX_OUTPUT_TOKENS = 3000;
 
 /**
  * Atlas (Fase 3) - "resumo executivo" (docs/FASE_03_ATLAS.md seção 5).
  *
- * Saída estruturada (não prosa livre) via output_config.format: cada
+ * Saída estruturada (não prosa livre) via Structured Outputs: cada
  * campo é opcional/anulável, e a UI só renderiza a seção quando o campo
  * vem preenchido — é assim que "não incluir seções sem dados como se
  * fossem fatos" (regra explícita da seção 5) é garantido mecanicamente,
@@ -50,6 +52,8 @@ export async function generateExecutiveSummary(
   const startedAt = Date.now();
   let inputTokens = 0;
   let outputTokens = 0;
+  let model = "desconhecido";
+  let responseId: string | undefined;
   let context: Awaited<ReturnType<typeof collectEventContext>> = null;
 
   try {
@@ -61,42 +65,38 @@ export async function generateExecutiveSummary(
     const user = await repository.users.get(session, session.userId);
     const systemPrompt = buildAtlasSystemPrompt(context, user?.nome ?? "usuário");
 
-    const client = getAtlasClient();
-    const model = getAtlasModel();
-    const response = await client.messages.parse({
-      model,
-      max_tokens: 3000,
-      system: systemPrompt,
-      messages: [
-        {
-          role: "user",
-          content:
-            "Gere o resumo executivo deste evento agora, seguindo exatamente o formato pedido. Deixe null/lista vazia qualquer seção sem dado no contexto — nunca invente.",
-        },
-      ],
-      output_config: { format: zodOutputFormat(AtlasSummarySchema) },
+    const provider = getAtlasProvider();
+    const result = await provider.generateStructured({
+      systemPrompt,
+      userMessage:
+        "Gere o resumo executivo deste evento agora, seguindo exatamente o formato pedido. Deixe null/lista vazia qualquer seção sem dado no contexto — nunca invente.",
+      schema: AtlasSummarySchema,
+      schemaName: "atlas_summary",
+      maxOutputTokens: MAX_OUTPUT_TOKENS,
     });
 
-    inputTokens = response.usage?.input_tokens ?? 0;
-    outputTokens = response.usage?.output_tokens ?? 0;
-
-    if (!response.parsed_output) {
-      throw new Error("Atlas não conseguiu montar o resumo executivo desta vez.");
-    }
+    inputTokens = result.inputTokens;
+    outputTokens = result.outputTokens;
+    model = result.model;
+    responseId = result.responseId;
 
     await recordAtlasAudit(session, repository, {
       entidade: "atlas_resumo",
       entidadeId: eventId,
       descricao: `Resumo executivo gerado pelo Atlas para o evento "${context.evento.titulo}".`,
       status: "sucesso",
+      consomeCota: true,
+      provider: result.provider,
       model,
+      responseId,
       inputTokens,
       outputTokens,
       durationMs: Date.now() - startedAt,
     });
 
-    return response.parsed_output;
+    return result.data;
   } catch (err) {
+    const { codigoErro, consomeCota } = classifyAtlasError(err);
     await recordAtlasAudit(session, repository, {
       entidade: "atlas_resumo",
       entidadeId: eventId,
@@ -104,11 +104,13 @@ export async function generateExecutiveSummary(
         ? `Falha ao gerar resumo executivo para o evento "${context.evento.titulo}".`
         : "Falha ao gerar resumo executivo.",
       status: "falha",
-      model: getAtlasModel(),
+      consomeCota,
+      model,
+      responseId,
       inputTokens,
       outputTokens,
       durationMs: Date.now() - startedAt,
-      errorCode: err instanceof Error ? err.name || "unknown_error" : "unknown_error",
+      errorCode: codigoErro,
     });
     throw err;
   } finally {

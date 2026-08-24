@@ -519,10 +519,13 @@ export interface Repository {
      * docs/FASE_03_ATLAS.md seção 13). Deliberadamente sem "view_audit":
      * não expõe conteúdo de nenhum registro, só contagens — diferente de
      * audit.list(), que é a consulta de auditoria de verdade.
+     * onlyBillable=true conta só registros com metadados.consomeCota=true
+     * — falhas de configuração/autenticação/infraestrutura são auditadas
+     * mas não devem consumir a cota funcional diária do usuário.
      */
     countInteractions(
       session: AuthSession,
-      filters: { acao: AuditAction; sinceIso: string },
+      filters: { acao: AuditAction; sinceIso: string; onlyBillable: boolean },
     ): Promise<{ totalCompany: number; totalUser: number }>;
   };
 
