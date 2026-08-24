@@ -18,7 +18,18 @@ import type { Repository } from "@/lib/data/repository";
  *   (ex: Redis) quando houver tráfego real de produção.
  * - Limites diários por usuário/empresa: contagem histórica, correta
  *   via repository.audit.countInteractions (persistido — mock ou
- *   Supabase —, funciona entre reinícios/instâncias).
+ *   Supabase —, funciona entre reinícios/instâncias). Só conta
+ *   interações com metadados.consomeCota=true (onlyBillable) — falhas
+ *   de configuração/autenticação/infraestrutura são auditadas mas não
+ *   consomem a cota funcional do usuário (ressalva do validador).
+ *
+ * Ressalvas conhecidas e aceitas para Preview/baixo tráfego (mesmas
+ * apontadas na revisão): a trava de concorrência/cooldown não é
+ * distribuída entre instâncias da Vercel, e a checagem "conta atual +
+ * libera + grava depois" não é atômica — duas requisições simultâneas
+ * em instâncias diferentes podem, em teoria, passar ambas. Antes de
+ * tráfego de produção relevante, evoluir para um store compartilhado
+ * (Redis) com incremento atômico.
  */
 
 const MIN_INTERVAL_MS = Number(process.env.ATLAS_MIN_INTERVAL_MS) || 3000;
@@ -48,10 +59,13 @@ function getState() {
   return globalThis.__atlasLimiterState;
 }
 
-function startOfTodayIso(): string {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString();
+// Ressalva do validador: "hoje" no fuso local do servidor é ambíguo em
+// produção (Vercel roda em UTC, não necessariamente o fuso da empresa,
+// e não há conceito de fuso por empresa no domínio hoje). Uma janela
+// móvel de 24h evita a ambiguidade — foi a alternativa que o próprio
+// validador recomendou como aceitável na ausência de fuso configurado.
+function last24HoursIso(): string {
+  return new Date(Date.now() - 24 * 3600_000).toISOString();
 }
 
 /**
@@ -74,13 +88,14 @@ export async function acquireAtlasCall(session: AuthSession, repository: Reposit
 
   const { totalCompany, totalUser } = await repository.audit.countInteractions(session, {
     acao: "interacao_ia",
-    sinceIso: startOfTodayIso(),
+    sinceIso: last24HoursIso(),
+    onlyBillable: true,
   });
   if (totalUser >= DAILY_LIMIT_PER_USER) {
-    throw new AtlasRateLimitError(`Você atingiu o limite diário de uso do Atlas (${DAILY_LIMIT_PER_USER} interações). Tente novamente amanhã.`);
+    throw new AtlasRateLimitError(`Você atingiu o limite diário de uso do Atlas (${DAILY_LIMIT_PER_USER} interações). Tente novamente mais tarde.`);
   }
   if (totalCompany >= DAILY_LIMIT_PER_COMPANY) {
-    throw new AtlasRateLimitError("O limite diário de uso do Atlas para sua empresa foi atingido. Tente novamente amanhã.");
+    throw new AtlasRateLimitError("O limite diário de uso do Atlas para sua empresa foi atingido. Tente novamente mais tarde.");
   }
 
   state.inFlightByUser.add(userId);

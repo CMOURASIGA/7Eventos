@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireAuthSession } from "@/lib/auth/session";
 import { getRepository } from "@/lib/data";
-import { isAtlasConfigured } from "@/lib/atlas/client";
+import { isAtlasConfigured } from "@/lib/atlas/providers";
 import { Card, Banner } from "@/components/ui/primitives";
 import { PageHeader } from "@/components/layout/Breadcrumb";
 import { AtlasPanel } from "./AtlasPanel";
@@ -30,7 +30,7 @@ export default async function EventAtlasPage({ params }: { params: Promise<{ id:
         <Card>
           <div className="p-5">
             <Banner tone="info">
-              Atlas ainda não está configurado nesta implantação (variável de ambiente ANTHROPIC_API_KEY ausente).
+              Atlas ainda não está configurado nesta implantação (variável de ambiente OPENAI_API_KEY ausente).
               Assim que a chave for provisionada, o assistente contextual e o resumo executivo ficam disponíveis
               automaticamente, sem mudança de código.
             </Banner>

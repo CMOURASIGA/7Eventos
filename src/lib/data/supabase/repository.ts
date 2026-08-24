@@ -1739,12 +1739,14 @@ export const supabaseRepository: Repository = {
     async countInteractions(session, filters) {
       const db = getSupabaseServiceClient();
       const companyId = requireCompany(session);
-      const { data, error } = await db
+      let query = db
         .from("audit_logs")
         .select("user_id")
         .eq("company_id", companyId)
         .eq("acao", filters.acao)
         .gte("created_at", filters.sinceIso);
+      if (filters.onlyBillable) query = query.eq("metadados->>consomeCota", "true");
+      const { data, error } = await query;
       if (error) throw new Error(error.message);
       const rows = data ?? [];
       return {

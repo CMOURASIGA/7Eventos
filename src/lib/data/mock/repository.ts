@@ -1144,7 +1144,11 @@ export const mockRepository: Repository = {
       const store = getStore();
       const companyId = requireCompany(session);
       const items = store.auditLogs.filter(
-        (a) => a.companyId === companyId && a.acao === filters.acao && a.createdAt >= filters.sinceIso,
+        (a) =>
+          a.companyId === companyId &&
+          a.acao === filters.acao &&
+          a.createdAt >= filters.sinceIso &&
+          (!filters.onlyBillable || a.metadados?.consomeCota === true),
       );
       return {
         totalCompany: items.length,
