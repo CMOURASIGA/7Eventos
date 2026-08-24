@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Card, CardHeader, Badge, Textarea, EmptyState, Banner } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/Button";
+import { MarkdownContent, InlineMarkdown } from "@/components/ui/MarkdownContent";
 import type { AtlasChatTurn } from "@/lib/atlas/types";
 import type { AtlasSummary } from "@/lib/atlas/summary";
 import { askAtlasAction, generateSummaryAction } from "./actions";
@@ -112,7 +113,7 @@ export function AtlasPanel({ eventId }: { eventId: string }) {
                     turn.role === "user" ? "bg-brand-600 text-white ml-auto" : "bg-surface-muted text-[var(--foreground)]"
                   }`}
                 >
-                  {turn.content}
+                  {turn.role === "assistant" ? <MarkdownContent content={turn.content} /> : turn.content}
                 </li>
               ))}
               {chatPending && <li className="text-sm text-fg-muted">Atlas está digitando...</li>}
@@ -157,7 +158,7 @@ function SummaryView({ summary }: { summary: AtlasSummary }) {
     <div className="space-y-5 text-sm">
       <div>
         <p className="text-xs text-fg-muted uppercase tracking-wide mb-1">Situação</p>
-        <p className="text-[var(--foreground)]">{summary.situacao}</p>
+        <p className="text-[var(--foreground)]"><InlineMarkdown text={summary.situacao} /></p>
       </div>
 
       <SummaryList title="Próximos marcos" items={summary.proximosMarcos} />
@@ -170,7 +171,7 @@ function SummaryView({ summary }: { summary: AtlasSummary }) {
             {summary.riscos.map((r, idx) => (
               <li key={idx} className="flex items-start gap-2">
                 <Badge tone={SEVERITY_TONE[r.severidade] ?? "neutral"}>{r.severidade}</Badge>
-                <span className="text-[var(--foreground)]">{r.descricao}</span>
+                <span className="text-[var(--foreground)]"><InlineMarkdown text={r.descricao} /></span>
               </li>
             ))}
           </ul>
@@ -209,7 +210,9 @@ function SummaryList({ title, items }: { title: string; items: string[] }) {
       <p className="text-xs text-fg-muted uppercase tracking-wide mb-1.5">{title}</p>
       <ul className="list-disc list-inside space-y-1 text-[var(--foreground)]">
         {items.map((item, idx) => (
-          <li key={idx}>{item}</li>
+          <li key={idx}>
+            <InlineMarkdown text={item} />
+          </li>
         ))}
       </ul>
     </div>
@@ -221,7 +224,9 @@ function SummaryField({ label, value }: { label: string; value: string | null })
   return (
     <div>
       <p className="text-xs text-fg-muted uppercase tracking-wide mb-1">{label}</p>
-      <p className="text-[var(--foreground)]">{value}</p>
+      <p className="text-[var(--foreground)]">
+        <InlineMarkdown text={value} />
+      </p>
     </div>
   );
 }

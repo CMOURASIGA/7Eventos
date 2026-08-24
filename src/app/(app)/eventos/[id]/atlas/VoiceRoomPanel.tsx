@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Card, CardHeader, Banner } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/Button";
+import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import type { AtlasChatTurn } from "@/lib/atlas/types";
 import { askAtlasAction, transcribeVoiceAction, synthesizeVoiceAction } from "./actions";
 
@@ -244,7 +245,7 @@ export function VoiceRoomPanel({ eventId }: { eventId: string }) {
                   message.role === "user" ? "bg-brand-600 text-white ml-auto" : "bg-surface-muted text-[var(--foreground)]"
                 }`}
               >
-                {message.content}
+                {message.role === "assistant" ? <MarkdownContent content={message.content} /> : message.content}
                 {message.source === "voz" && <span className="block text-xs opacity-70 mt-1">por voz</span>}
               </li>
             ))}
