@@ -7,6 +7,7 @@ import { Card, Banner } from "@/components/ui/primitives";
 import { PageHeader } from "@/components/layout/Breadcrumb";
 import { AtlasPanel } from "./AtlasPanel";
 import { RiskSignalsCard } from "./RiskSignalsCard";
+import { FinancialAnalysisCard } from "./FinancialAnalysisCard";
 
 export default async function EventAtlasPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireAuthSession();
@@ -32,6 +33,9 @@ export default async function EventAtlasPage({ params }: { params: Promise<{ id:
       />
 
       {context && <RiskSignalsCard risks={context.riscosDetectados} actions={context.acoesSugeridas} />}
+
+      {/* Só renderiza para quem tem view_financials — o mesmo controle já aplicado ao restante do produto (context.financeiroDetalhado é null sem essa capability). */}
+      {context?.financeiroDetalhado && <FinancialAnalysisCard analysis={context.financeiroDetalhado} />}
 
       {isAtlasConfigured() ? (
         <AtlasPanel eventId={id} />

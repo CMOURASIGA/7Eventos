@@ -47,6 +47,39 @@ export interface AtlasDetectedRisk {
 }
 
 /**
+ * Análise financeira aprofundada (docs/FASE_03_ATLAS.md seção 8) —
+ * também determinística (financialEngine.ts). "Previsto x contratado x
+ * realizado" é lido por categoria de item de orçamento como cotado
+ * (estimativa inicial) x contratado x realizado — os três estágios que já
+ * existem no domínio de BudgetItem, sem precisar de um "previsto por
+ * categoria" que o produto não modela.
+ */
+export interface AtlasFinancialCategoryBreakdown {
+  categoria: string;
+  cotado: number;
+  contratado: number;
+  realizado: number;
+  /** (contratado - cotado) / cotado * 100. null quando não há valor cotado para comparar. */
+  variacaoContratadoCotadoPercentual: number | null;
+  /** true quando contratado ou realizado já superou o valor cotado desta categoria. */
+  acimaDoCotado: boolean;
+}
+
+export interface AtlasFinancialAnalysis {
+  porCategoria: AtlasFinancialCategoryBreakdown[];
+  categoriasAcimaDoPrevisto: string[];
+  concentracao: { categoria: string; percentualDoTotal: number } | null;
+  indicadores: {
+    percentualExecutado: number | null;
+    saldoRealizado: number;
+    ticketMedioPorItem: number | null;
+    itensSemValorRealizado: number;
+  };
+  /** Observações objetivas, nunca aconselhamento financeiro fora do escopo operacional do evento (regra explícita da seção 8). */
+  pontosDeAtencao: string[];
+}
+
+/**
  * Próximas ações sugeridas (docs/FASE_03_ATLAS.md seção 7) — também
  * determinísticas (actionEngine.ts), derivadas dos mesmos dados brutos
  * que alimentam o motor de riscos. Apenas sugestão: nada aqui vira tarefa
@@ -95,6 +128,8 @@ export interface AtlasContext {
   riscosDetectados: AtlasDetectedRisk[];
   /** Ações sugeridas derivadas dos mesmos sinais (seção 7). */
   acoesSugeridas: AtlasSuggestedAction[];
+  /** Análise financeira aprofundada (seção 8). null quando a sessão não tem view_financials — mesma regra do campo "financeiro". */
+  financeiroDetalhado: AtlasFinancialAnalysis | null;
 }
 
 export interface AtlasChatTurn {
