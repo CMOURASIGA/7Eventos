@@ -5,6 +5,7 @@ import { can } from "@/lib/domain/permissions";
 import { COMPLEXITY_LEVEL_LABELS } from "@/lib/domain/complexity";
 import { detectEventRisks } from "./riskEngine";
 import { suggestNextActions } from "./actionEngine";
+import { analyzeFinancials } from "./financialEngine";
 import type { AtlasContext } from "./types";
 
 /**
@@ -112,6 +113,7 @@ export async function collectEventContext(
   const userNameById = new Map(users.map((u) => [u.id, u.nome]));
 
   let financeiro: AtlasContext["financeiro"] = null;
+  let financeiroDetalhado: AtlasContext["financeiroDetalhado"] = null;
   if (canViewFinancials) {
     const activeBudgetItems = budgetItems.filter((i) => i.status !== "cancelado");
     const orcamentoPrevisto = budget?.valorPrevisto ?? 0;
@@ -124,6 +126,7 @@ export async function collectEventContext(
       saldoRealizado: orcamentoPrevisto - realizado,
       percentualExecutado: orcamentoPrevisto > 0 ? (realizado / orcamentoPrevisto) * 100 : null,
     };
+    financeiroDetalhado = analyzeFinancials({ budgetItems: activeBudgetItems, orcamentoPrevisto, comprometido, realizado });
   }
 
   const riscosDetectados = detectEventRisks({
@@ -205,5 +208,6 @@ export async function collectEventContext(
       .map((h) => ({ de: h.statusAnterior, para: h.statusNovo, quando: h.createdAt })),
     riscosDetectados,
     acoesSugeridas,
+    financeiroDetalhado,
   };
 }
