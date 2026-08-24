@@ -29,6 +29,11 @@ export const AtlasSummarySchema = z.object({
   situacao: z.string().describe("Situação geral do evento agora, em 1-2 frases objetivas."),
   proximosMarcos: z.array(z.string()).describe("Próximos marcos/datas relevantes. Lista vazia se não houver nenhum."),
   pendencias: z.array(z.string()).describe("O que está pendente agora. Lista vazia se não houver nenhuma."),
+  // O modelo ainda preenche este campo (é o formato pedido no Structured
+  // Output), mas generateExecutiveSummary() sempre sobrescreve o valor
+  // devolvido com context.riscosDetectados antes de retornar — a seção 6
+  // exige que a identificação de risco seja mecânica, não uma invenção do
+  // modelo (seção 12 "não colocar regras críticas apenas no prompt").
   riscos: z.array(AtlasRiskItemSchema).describe("Riscos identificados a partir do contexto fornecido. Lista vazia se não houver nenhum."),
   orcamento: z
     .string()
@@ -80,6 +85,19 @@ export async function generateExecutiveSummary(
     model = result.model;
     responseId = result.responseId;
 
+    // Seção 6: a lista de riscos do resumo executivo vem sempre do motor
+    // determinístico (context.riscosDetectados), nunca do que o modelo
+    // gerou em result.data.riscos — mesmo que o Structured Output tenha
+    // pedido esse formato. Isso garante que o resumo nunca mostra um
+    // risco "inventado" que não tenha evidência real por trás.
+    const data = {
+      ...result.data,
+      riscos: context.riscosDetectados.map((r) => ({
+        descricao: `${r.descricao} — ${r.evidencia}`,
+        severidade: r.severidade,
+      })),
+    };
+
     await recordAtlasAudit(session, repository, {
       entidade: "atlas_resumo",
       entidadeId: eventId,
@@ -94,7 +112,7 @@ export async function generateExecutiveSummary(
       durationMs: Date.now() - startedAt,
     });
 
-    return result.data;
+    return data;
   } catch (err) {
     const { codigoErro, consomeCota } = classifyAtlasError(err);
     await recordAtlasAudit(session, repository, {

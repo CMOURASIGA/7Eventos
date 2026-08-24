@@ -28,6 +28,41 @@ export interface AtlasFinanceiro {
 }
 
 /**
+ * Motor de riscos (docs/FASE_03_ATLAS.md seção 6) — sinais detectados de
+ * forma determinística por riskEngine.ts, nunca pelo modelo (princípio
+ * "não colocar regras críticas apenas no prompt", seção 12). O modelo só
+ * recebe esta lista pronta e a usa para responder/priorizar — não inventa
+ * riscos além dela.
+ */
+export type AtlasRiskSeverity = "baixa" | "media" | "alta" | "critica";
+
+export interface AtlasDetectedRisk {
+  /** Chave estável do tipo de sinal (ex: "tarefa_atrasada") — não muda entre execuções. */
+  codigo: string;
+  descricao: string;
+  severidade: AtlasRiskSeverity;
+  evidencia: string;
+  impacto: string;
+  recomendacao: string;
+}
+
+/**
+ * Próximas ações sugeridas (docs/FASE_03_ATLAS.md seção 7) — também
+ * determinísticas (actionEngine.ts), derivadas dos mesmos dados brutos
+ * que alimentam o motor de riscos. Apenas sugestão: nada aqui vira tarefa
+ * automaticamente (regra explícita da seção 7 — exige confirmação humana
+ * em outro fluxo, esta fatia não escreve nada).
+ */
+export interface AtlasSuggestedAction {
+  acao: string;
+  prioridade: AtlasRiskSeverity;
+  justificativa: string;
+  prazoSugerido: string;
+  /** Nome resolvido, não o id — o modelo/UI nunca recebem ids internos. null quando não há base para sugerir alguém. */
+  responsavelSugerido: string | null;
+}
+
+/**
  * Contexto estruturado de um evento, já filtrado pelas permissões da
  * sessão (ex: "financeiro" é omitido para quem não tem view_financials —
  * princípios 2/3 "respeitar company_id/perfil"). É isto, serializado em
@@ -56,6 +91,10 @@ export interface AtlasContext {
   pendencias: { total: number; lista: AtlasPendencySummary[] };
   financeiro: AtlasFinanceiro | null;
   historicoRecente: { de: string | null; para: string; quando: string }[];
+  /** Sinais de risco detectados mecanicamente (seção 6) — fonte única de verdade sobre riscos para o modelo. */
+  riscosDetectados: AtlasDetectedRisk[];
+  /** Ações sugeridas derivadas dos mesmos sinais (seção 7). */
+  acoesSugeridas: AtlasSuggestedAction[];
 }
 
 export interface AtlasChatTurn {

@@ -3,6 +3,8 @@ import type { AuthSession } from "@/lib/domain/types";
 import type { Repository } from "@/lib/data/repository";
 import { can } from "@/lib/domain/permissions";
 import { COMPLEXITY_LEVEL_LABELS } from "@/lib/domain/complexity";
+import { detectEventRisks } from "./riskEngine";
+import { suggestNextActions } from "./actionEngine";
 import type { AtlasContext } from "./types";
 
 /**
@@ -46,6 +48,7 @@ export async function collectEventContext(
     complexity,
     budget,
     budgetItems,
+    users,
   ] = await Promise.all([
     repository.events.getSessions(session, eventId),
     event.spaceId ? repository.spaces.get(session, event.spaceId) : Promise.resolve(null),
@@ -62,6 +65,9 @@ export async function collectEventContext(
     repository.complexity.getLatestByEvent(session, eventId),
     canViewFinancials ? repository.budget.getByEvent(session, eventId) : Promise.resolve(null),
     canViewFinancials ? repository.budgetItems.listByEvent(session, eventId) : Promise.resolve([]),
+    // Só para resolver nomes de responsável nos riscos/ações sugeridas
+    // (seções 6/7) — nunca expor userId cru ao modelo.
+    repository.users.list(session),
   ]);
 
   const nowMs = Date.now();
@@ -103,6 +109,8 @@ export async function collectEventContext(
   const primeiraSessao = sortedSessions[0];
   const ultimaSessao = sortedSessions[sortedSessions.length - 1];
 
+  const userNameById = new Map(users.map((u) => [u.id, u.nome]));
+
   let financeiro: AtlasContext["financeiro"] = null;
   if (canViewFinancials) {
     const activeBudgetItems = budgetItems.filter((i) => i.status !== "cancelado");
@@ -117,6 +125,32 @@ export async function collectEventContext(
       percentualExecutado: orcamentoPrevisto > 0 ? (realizado / orcamentoPrevisto) * 100 : null,
     };
   }
+
+  const riscosDetectados = detectEventRisks({
+    evento: { status: event.status },
+    nowMs,
+    primeiraSessaoInicio: primeiraSessao?.inicio ?? null,
+    checklist,
+    scheduleItems,
+    reservations,
+    espacoCapacidade: space?.capacidade ?? null,
+    confirmadosCount: confirmedRegistrations.length,
+    eventSuppliers,
+    documents,
+    financeiro,
+  });
+
+  const acoesSugeridas = suggestNextActions({
+    evento: { status: event.status },
+    nowMs,
+    checklist,
+    scheduleItems,
+    reservations,
+    eventSuppliers,
+    documents,
+    financeiro,
+    userNameById,
+  });
 
   return {
     evento: {
@@ -169,5 +203,7 @@ export async function collectEventContext(
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .slice(0, 5)
       .map((h) => ({ de: h.statusAnterior, para: h.statusNovo, quando: h.createdAt })),
+    riscosDetectados,
+    acoesSugeridas,
   };
 }
