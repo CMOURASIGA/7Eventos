@@ -25,6 +25,33 @@ export const AtlasRiskItemSchema = z.object({
   severidade: z.enum(["baixa", "media", "alta", "critica"]),
 });
 
+/**
+ * Encerramento (docs/FASE_03_ATLAS.md seção 10) — retrospectiva gerada
+ * pelo modelo, mas só quando o evento já está concluído
+ * (generateExecutiveSummary() força null caso contrário, mesma
+ * mecânica usada para "riscos"). Diferente do motor de riscos/próximas
+ * ações/análise financeira, esta seção precisa de síntese em texto (o
+ * domínio não modela "aprendizados"/"ocorrências" como dado estruturado
+ * próprio) — por isso é a única parte do encerramento que passa pelo
+ * modelo, e mesmo assim ancorada nos fatos do contexto (riscos
+ * detectados, desvio de orçamento, histórico), nunca inventada do zero.
+ */
+export const AtlasEncerramentoSchema = z.object({
+  concluido: z.array(z.string()).describe("O que foi concluído neste evento, com base no contexto. Lista vazia se não houver nada a destacar."),
+  pendenciasFinais: z.array(z.string()).describe("Pendências que ficaram em aberto após o evento. Lista vazia se não houver nenhuma."),
+  desviosOrcamento: z
+    .string()
+    .nullable()
+    .describe("Resumo textual de desvio entre previsto e realizado. null se não houver orçamento no contexto ou não houver desvio relevante."),
+  ocorrencias: z
+    .array(z.string())
+    .describe("Ocorrências relevantes durante o evento, baseadas nos riscos e no histórico do contexto. Lista vazia se não houver nenhuma."),
+  aprendizados: z
+    .array(z.string())
+    .describe("Aprendizados objetivos com base concreta no contexto. Nunca invente — deixe a lista vazia se não houver base real para um aprendizado."),
+  recomendacoesFuturas: z.array(z.string()).describe("Recomendações objetivas para eventos futuros semelhantes. Lista vazia se não houver nenhuma."),
+});
+
 export const AtlasSummarySchema = z.object({
   situacao: z.string().describe("Situação geral do evento agora, em 1-2 frases objetivas."),
   proximosMarcos: z.array(z.string()).describe("Próximos marcos/datas relevantes. Lista vazia se não houver nenhum."),
@@ -44,6 +71,9 @@ export const AtlasSummarySchema = z.object({
   fornecedores: z.string().nullable().describe("Resumo textual dos fornecedores vinculados. null se não houver nenhum."),
   participantes: z.string().nullable().describe("Resumo textual de inscrições/presença. null se não houver nenhuma inscrição."),
   recomendacoes: z.array(z.string()).describe("Recomendações objetivas e acionáveis. Lista vazia se não houver nenhuma a fazer."),
+  encerramento: AtlasEncerramentoSchema.nullable().describe(
+    "Retrospectiva de encerramento (seção 10). Preencha apenas quando evento.status do contexto for 'concluido'; caso contrário, sempre null.",
+  ),
 });
 
 export type AtlasSummary = z.infer<typeof AtlasSummarySchema>;
@@ -96,6 +126,10 @@ export async function generateExecutiveSummary(
         descricao: `${r.descricao} — ${r.evidencia}`,
         severidade: r.severidade,
       })),
+      // Seção 10: encerramento só faz sentido para um evento já
+      // concluído — força null aqui em vez de confiar só na instrução do
+      // prompt, mesmo que o modelo tenha preenchido algo.
+      encerramento: context.evento.status === "concluido" ? result.data.encerramento : null,
     };
 
     await recordAtlasAudit(session, repository, {

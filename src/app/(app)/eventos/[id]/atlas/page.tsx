@@ -3,11 +3,13 @@ import { requireAuthSession } from "@/lib/auth/session";
 import { getRepository } from "@/lib/data";
 import { isAtlasConfigured } from "@/lib/atlas/providers";
 import { collectEventContext } from "@/lib/atlas/context";
+import { generateEventBriefing } from "@/lib/atlas/briefing";
 import { Card, Banner } from "@/components/ui/primitives";
 import { PageHeader } from "@/components/layout/Breadcrumb";
 import { AtlasPanel } from "./AtlasPanel";
 import { RiskSignalsCard } from "./RiskSignalsCard";
 import { FinancialAnalysisCard } from "./FinancialAnalysisCard";
+import { BriefingCard } from "./BriefingCard";
 
 export default async function EventAtlasPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireAuthSession();
@@ -17,10 +19,13 @@ export default async function EventAtlasPage({ params }: { params: Promise<{ id:
   const event = await repository.events.get(session, id);
   if (!event) notFound();
 
-  // Motor de riscos (seção 6) e próximas ações (seção 7) são
-  // determinísticos — não chamam o provedor de IA — então ficam
-  // disponíveis mesmo sem OPENAI_API_KEY configurada.
-  const context = await collectEventContext(session, id, repository);
+  // Motor de riscos (seção 6), próximas ações (seção 7) e briefing
+  // (seção 9) são determinísticos — não chamam o provedor de IA — então
+  // ficam disponíveis mesmo sem OPENAI_API_KEY configurada.
+  const [context, briefing] = await Promise.all([
+    collectEventContext(session, id, repository),
+    generateEventBriefing(session, id, repository),
+  ]);
 
   return (
     <div className="space-y-5 max-w-3xl">
@@ -36,6 +41,8 @@ export default async function EventAtlasPage({ params }: { params: Promise<{ id:
 
       {/* Só renderiza para quem tem view_financials — o mesmo controle já aplicado ao restante do produto (context.financeiroDetalhado é null sem essa capability). */}
       {context?.financeiroDetalhado && <FinancialAnalysisCard analysis={context.financeiroDetalhado} />}
+
+      {briefing && <BriefingCard briefing={briefing} />}
 
       {isAtlasConfigured() ? (
         <AtlasPanel eventId={id} />

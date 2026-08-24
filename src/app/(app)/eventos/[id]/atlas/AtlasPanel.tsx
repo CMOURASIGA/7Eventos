@@ -186,6 +186,18 @@ function SummaryView({ summary }: { summary: AtlasSummary }) {
       </div>
 
       <SummaryList title="Recomendações" items={summary.recomendacoes} />
+
+      {summary.encerramento && (
+        <div className="pt-4 border-t border-border-subtle space-y-4">
+          <p className="text-xs text-fg-muted uppercase tracking-wide">Encerramento</p>
+          <SummaryList title="Concluído" items={summary.encerramento.concluido} />
+          <SummaryList title="Pendências finais" items={summary.encerramento.pendenciasFinais} />
+          <SummaryField label="Desvios de orçamento" value={summary.encerramento.desviosOrcamento} />
+          <SummaryList title="Ocorrências" items={summary.encerramento.ocorrencias} />
+          <SummaryList title="Aprendizados" items={summary.encerramento.aprendizados} />
+          <SummaryList title="Recomendações para eventos futuros" items={summary.encerramento.recomendacoesFuturas} />
+        </div>
+      )}
     </div>
   );
 }

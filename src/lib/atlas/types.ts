@@ -96,6 +96,75 @@ export interface AtlasSuggestedAction {
 }
 
 /**
+ * Preparação operacional / briefing (docs/FASE_03_ATLAS.md seção 9) —
+ * assim como o motor de riscos, é montado de forma determinística
+ * (briefingEngine.ts) a partir de dados já autorizados: nenhum campo
+ * aqui é gerado pelo modelo. Ao contrário de AtlasContext, não é
+ * "achatado" para consumo do modelo — é o documento final que a UI
+ * renderiza diretamente, então carrega nomes e listas completas (dentro
+ * de um único evento, nunca entre empresas).
+ */
+export interface AtlasBriefingAgendaItem {
+  inicio: string;
+  fim: string;
+  observacao?: string;
+}
+
+export interface AtlasBriefingEquipeItem {
+  nome: string;
+  funcao: string;
+  status: string;
+}
+
+export interface AtlasBriefingFornecedorItem {
+  nome: string;
+  servico: string;
+  situacao: string;
+  contato: string | null;
+}
+
+export interface AtlasBriefingCronogramaItem {
+  titulo: string;
+  inicio: string;
+  fim: string;
+  responsavel: string | null;
+  status: string;
+}
+
+export interface AtlasBriefingChecklistItem {
+  titulo: string;
+  categoria: string;
+  status: string;
+  prazo: string | null;
+}
+
+export interface AtlasBriefingContato {
+  nome: string;
+  papel: string;
+  contato: string | null;
+}
+
+export interface AtlasBriefing {
+  evento: {
+    titulo: string;
+    status: string;
+    categoria: string;
+    objetivo: string | null;
+    publicoAlvo: string | null;
+  };
+  espaco: { nome: string; local: string; capacidade: number } | null;
+  agenda: AtlasBriefingAgendaItem[];
+  equipe: AtlasBriefingEquipeItem[];
+  fornecedores: AtlasBriefingFornecedorItem[];
+  cronograma: AtlasBriefingCronogramaItem[];
+  checklist: AtlasBriefingChecklistItem[];
+  participantes: { inscritos: number; confirmados: number };
+  riscos: AtlasDetectedRisk[];
+  orcamento: { orcamentoPrevisto: number; comprometido: number; realizado: number } | null;
+  contatosEssenciais: AtlasBriefingContato[];
+}
+
+/**
  * Contexto estruturado de um evento, já filtrado pelas permissões da
  * sessão (ex: "financeiro" é omitido para quem não tem view_financials —
  * princípios 2/3 "respeitar company_id/perfil"). É isto, serializado em
