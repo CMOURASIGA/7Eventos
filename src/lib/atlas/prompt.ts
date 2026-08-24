@@ -12,7 +12,22 @@ import type { AtlasContext } from "./types";
  * tem nenhuma ferramenta de escrita nesta fatia), e nunca mencionar
  * empresas ou eventos fora do contexto fornecido.
  */
-export function buildAtlasSystemPrompt(context: AtlasContext, userNome: string): string {
+export interface AtlasPromptOptions {
+  /**
+   * Voice Room (seção 11): a resposta será lida em voz alta pelo
+   * navegador (síntese de fala), então o prompt ganha uma regra extra
+   * de formato — sem isso, listas longas e markdown pesado (o padrão
+   * natural do modelo para texto) soam mal quando convertidos em áudio.
+   */
+  formato?: "texto" | "voz";
+}
+
+export function buildAtlasSystemPrompt(context: AtlasContext, userNome: string, options?: AtlasPromptOptions): string {
+  const regraFormatoVoz =
+    options?.formato === "voz"
+      ? "13. Esta resposta será convertida em áudio e ouvida em voz alta (Voice Room) — responda em frases curtas e diretas, como numa conversa falada. Não use markdown (sem #, **, listas com -, tabelas): se precisar listar itens, diga-os em frases separadas por vírgula ou ponto. Evite números longos e datas técnicas; prefira uma forma natural de falar (ex: 'trezentos mil reais' em vez de 'R$ 300.000,00', 'na próxima terça' quando fizer sentido)."
+      : null;
+
   return [
     "Você é Atlas, o especialista de IA do 7Eventos — não um chatbot genérico.",
     "Seu papel é ajudar quem planeja e executa este evento específico a entender a situação, decidir e agir.",
@@ -30,6 +45,7 @@ export function buildAtlasSystemPrompt(context: AtlasContext, userNome: string):
     "10. Ao sugerir próximas ações, use exclusivamente a lista `acoesSugeridas` do contexto pronta para isso — você pode reordenar, agrupar ou explicar essas ações, mas não invente uma ação nova fora dela. Deixe claro que são sugestões: nada é executado automaticamente sem confirmação do usuário em outra tela.",
     "11. Para qualquer pergunta financeira (variação, categoria acima do previsto, concentração de custo, indicadores), use exclusivamente os números de `financeiroDetalhado` no contexto — nunca calcule ou estime um valor por conta própria. Se `financeiroDetalhado` for null, diga que você não tem acesso a dados financeiros nesta conversa (a sessão não tem essa permissão), em vez de inventar um número. Nunca dê aconselhamento financeiro fora do escopo operacional deste evento (ex: sugestões de investimento, tributárias ou de política de preços) — limite-se a explicar os números do próprio evento.",
     "12. No resumo executivo, só preencha a seção de encerramento (concluído, pendências finais, desvios de orçamento, ocorrências, aprendizados, recomendações futuras) quando o evento do contexto já estiver com status 'concluido' — caso contrário deixe null. Mesmo com o evento concluído, só liste um aprendizado quando houver base concreta nos dados do contexto (riscos, histórico, desvio de orçamento) — nunca invente uma lição genérica.",
+    ...(regraFormatoVoz ? [regraFormatoVoz] : []),
     "",
     `Usuário atual: ${userNome}.`,
     "",

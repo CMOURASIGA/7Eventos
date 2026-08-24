@@ -76,6 +76,8 @@ export async function askAtlas(
   rawQuestion: unknown,
   rawHistory: unknown,
   repository: Repository,
+  /** Voice Room (seção 11) passa "voz" para o prompt pedir respostas mais curtas e faladas — ver prompt.ts. */
+  source: "texto" | "voz" = "texto",
 ): Promise<AtlasAnswer> {
   const history = validateHistory(rawHistory);
   const question = validateQuestion(rawQuestion);
@@ -95,7 +97,7 @@ export async function askAtlas(
     }
 
     const user = await repository.users.get(session, session.userId);
-    const systemPrompt = buildAtlasSystemPrompt(context, user?.nome ?? "usuário");
+    const systemPrompt = buildAtlasSystemPrompt(context, user?.nome ?? "usuário", { formato: source });
 
     const provider = getAtlasProvider();
     // Controle de consumo (seção 13): só os últimos N turnos entram na

@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { requireAuthSession } from "@/lib/auth/session";
 import { getRepository } from "@/lib/data";
 import { isAtlasConfigured } from "@/lib/atlas/providers";
@@ -45,7 +46,23 @@ export default async function EventAtlasPage({ params }: { params: Promise<{ id:
       {briefing && <BriefingCard briefing={briefing} />}
 
       {isAtlasConfigured() ? (
-        <AtlasPanel eventId={id} />
+        <>
+          <AtlasPanel eventId={id} />
+          <Card>
+            <div className="p-5 flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-[var(--foreground)]">Voice Room</p>
+                <p className="text-sm text-fg-muted">Converse por voz com o Atlas sobre este evento.</p>
+              </div>
+              <Link
+                href={`/eventos/${id}/atlas/voz`}
+                className="shrink-0 px-3.5 py-2 rounded-[var(--radius-sm)] text-sm font-medium bg-brand-600 text-white hover:bg-brand-700 transition-colors"
+              >
+                Abrir Voice Room
+              </Link>
+            </div>
+          </Card>
+        </>
       ) : (
         <Card>
           <div className="p-5">
