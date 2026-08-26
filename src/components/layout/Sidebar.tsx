@@ -6,6 +6,7 @@ import type { Role } from "@/lib/domain/types";
 import { can } from "@/lib/domain/permissions";
 import { NAV_ITEMS } from "./nav";
 import { ICONS } from "./icons";
+import { ConsultServicesMark } from "./ConsultServicesMark";
 
 export function Sidebar({
   role,
@@ -27,7 +28,9 @@ export function Sidebar({
       )}
       <aside className={`sidebar-shell overflow-y-auto md:min-h-screen md:self-stretch ${isMobileOpen ? "is-open" : ""}`}>
         <div className="sidebar-brand-panel relative">
-          <div className="sidebar-brand-logo-frame">7</div>
+          <div className="sidebar-brand-logo-frame">
+            <ConsultServicesMark className="h-8 w-8" />
+          </div>
           <div className="sidebar-rail-only leading-tight">
             <p className="text-sm font-semibold text-[var(--foreground)]">7Eventos</p>
             <p className="text-[11px] text-fg-muted">Consult Services</p>

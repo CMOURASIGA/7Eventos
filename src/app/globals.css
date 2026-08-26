@@ -197,11 +197,6 @@ body {
   width: 40px;
   height: 40px;
   flex: 0 0 40px;
-  border-radius: 10px;
-  background: var(--brand-600);
-  color: #fff;
-  font-weight: 800;
-  font-size: 15px;
 }
 
 .sidebar-product {
