@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Image from "next/image";
 import { getAuthSession } from "@/lib/auth/session";
 import { getDataMode } from "@/lib/data";
 import { getStore } from "@/lib/data/mock/store";
@@ -18,8 +19,8 @@ export default async function LoginPage() {
     <div className="min-h-screen w-full flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-4xl grid md:grid-cols-2 gap-8 items-center">
         <div className="hidden md:block">
-          <div className="h-12 w-12 rounded-[var(--radius-md)] bg-brand-600 text-white flex items-center justify-center font-bold text-xl mb-6">
-            7
+          <div className="mb-6">
+            <Image src="/consult-services-icon.png" alt="Consult Services" width={48} height={48} priority />
           </div>
           <h1 className="text-3xl font-semibold text-[var(--foreground)] leading-tight">
             7Eventos

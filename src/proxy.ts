@@ -3,6 +3,12 @@ import { verifyToken } from "@/lib/auth/token";
 
 const SESSION_COOKIE = "7ev_session";
 const PUBLIC_PATHS = ["/login"];
+// Arquivos estáticos servidos de /public (logo, ícones etc.) — sempre
+// públicos, e o otimizador de imagem do Next (`next/image`) busca o
+// arquivo original internamente sem levar o cookie do navegador; sem
+// esta exceção, essa busca cai aqui sem sessão e é redirecionada para
+// /login, quebrando a imagem.
+const STATIC_ASSET_PATTERN = /\.(png|jpe?g|gif|webp|svg|ico)$/i;
 
 /**
  * Proteção de rotas (RN da Fase 1: "rotas ocultas por perfil também
@@ -19,7 +25,8 @@ export async function proxy(request: NextRequest) {
     PUBLIC_PATHS.some((p) => pathname === p) ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api/public") ||
-    pathname === "/favicon.ico"
+    pathname === "/favicon.ico" ||
+    STATIC_ASSET_PATTERN.test(pathname)
   ) {
     return NextResponse.next();
   }

@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import type { Role } from "@/lib/domain/types";
 import { can } from "@/lib/domain/permissions";
 import { NAV_ITEMS } from "./nav";
 import { ICONS } from "./icons";
-import { ConsultServicesMark } from "./ConsultServicesMark";
 
 export function Sidebar({
   role,
@@ -29,7 +29,7 @@ export function Sidebar({
       <aside className={`sidebar-shell overflow-y-auto md:min-h-screen md:self-stretch ${isMobileOpen ? "is-open" : ""}`}>
         <div className="sidebar-brand-panel relative">
           <div className="sidebar-brand-logo-frame">
-            <ConsultServicesMark className="h-8 w-8" />
+            <Image src="/consult-services-icon.png" alt="Consult Services" width={40} height={40} priority />
           </div>
           <div className="sidebar-rail-only leading-tight">
             <p className="text-sm font-semibold text-[var(--foreground)]">7Eventos</p>
