@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { requireAuthSession } from "@/lib/auth/session";
 import { getRepository } from "@/lib/data";
 import { isValidBrandColor, isValidLogoUrl } from "@/lib/branding";
+import { setDemoBrandingOverride } from "@/lib/branding-server";
 
 export async function updateBranding(formData: FormData): Promise<void> {
   const session = await requireAuthSession();
@@ -20,11 +21,12 @@ export async function updateBranding(formData: FormData): Promise<void> {
   }
 
   try {
-    await getRepository().companies.updateBranding(session, {
+    const company = await getRepository().companies.updateBranding(session, {
       corPrimaria,
       corSecundaria,
       logoUrl: logoUrl || undefined,
     });
+    await setDemoBrandingOverride(company);
     revalidatePath("/", "layout");
     redirect("/administracao/identidade-visual?updated=1");
   } catch (error) {

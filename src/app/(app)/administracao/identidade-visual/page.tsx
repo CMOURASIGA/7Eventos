@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { BrandLogo } from "@/components/layout/BrandLogo";
 import { updateBranding } from "./actions";
 import { BrandColorField } from "./BrandColorField";
+import { withDemoBrandingOverride } from "@/lib/branding-server";
 
 export default async function BrandingPage({
   searchParams,
@@ -16,7 +17,7 @@ export default async function BrandingPage({
   const session = await requireAuthSession();
   if (!can(session.perfil, "manage_company_settings") || !session.companyId) redirect("/dashboard?negado=1");
 
-  const company = await getRepository().companies.get(session, session.companyId);
+  const company = await withDemoBrandingOverride(await getRepository().companies.get(session, session.companyId));
   if (!company) redirect("/dashboard?negado=1");
   const { error, updated } = await searchParams;
 
