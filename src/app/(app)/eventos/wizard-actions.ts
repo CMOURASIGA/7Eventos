@@ -75,13 +75,18 @@ export async function wizardStep1(id: string, formData: FormData): Promise<void>
     redirect(`/eventos/${id}/novo?step=1&error=${encodeURIComponent("Preencha ao menos o título e a categoria.")}`);
   }
 
-  await repository.events.update(session, id, {
-    titulo,
-    categoria,
-    tematica: String(formData.get("tematica") ?? "") || undefined,
-    descricao: String(formData.get("descricao") ?? "") || undefined,
-  });
-  revalidatePath(`/eventos/${id}`);
+  try {
+    await repository.events.update(session, id, {
+      titulo,
+      categoria,
+      tematica: String(formData.get("tematica") ?? "") || undefined,
+      descricao: String(formData.get("descricao") ?? "") || undefined,
+    });
+    revalidatePath(`/eventos/${id}`);
+  } catch (err) {
+    if (isRedirectError(err)) throw err;
+    redirect(`/eventos/${id}/novo?step=1&error=${encodeURIComponent(errorMessage(err))}`);
+  }
   redirect(`/eventos/${id}/novo?step=2`);
 }
 
@@ -95,22 +100,27 @@ export async function wizardStep2(id: string, formData: FormData): Promise<void>
     redirect(`/eventos/${id}/novo?step=2&error=${encodeURIComponent("A data/hora final deve ser posterior à data/hora inicial.")}`);
   }
 
-  await repository.events.update(session, id, {
-    tipoLocalizacao: (String(formData.get("tipoLocalizacao") ?? "interno") as "interno" | "externo"),
-    spaceId: String(formData.get("spaceId") ?? "") || undefined,
-    local: String(formData.get("local") ?? "") || undefined,
-    formato: (String(formData.get("formato") ?? "presencial") as "presencial" | "online" | "hibrido"),
-    frequencia: (String(formData.get("frequencia") ?? "unico") as "unico" | "diario" | "semanal" | "mensal"),
-  });
+  try {
+    await repository.events.update(session, id, {
+      tipoLocalizacao: (String(formData.get("tipoLocalizacao") ?? "interno") as "interno" | "externo"),
+      spaceId: String(formData.get("spaceId") ?? "") || undefined,
+      local: String(formData.get("local") ?? "") || undefined,
+      formato: (String(formData.get("formato") ?? "presencial") as "presencial" | "online" | "hibrido"),
+      frequencia: (String(formData.get("frequencia") ?? "unico") as "unico" | "diario" | "semanal" | "mensal"),
+    });
 
-  if (inicio && fim) {
-    await repository.events.replaceSessions(session, id, [
-      { inicio: new Date(inicio).toISOString(), fim: new Date(fim).toISOString() },
-    ]);
+    if (inicio && fim) {
+      await repository.events.replaceSessions(session, id, [
+        { inicio: new Date(inicio).toISOString(), fim: new Date(fim).toISOString() },
+      ]);
+    }
+
+    revalidatePath(`/eventos/${id}`);
+    revalidatePath("/agenda");
+  } catch (err) {
+    if (isRedirectError(err)) throw err;
+    redirect(`/eventos/${id}/novo?step=2&error=${encodeURIComponent(errorMessage(err))}`);
   }
-
-  revalidatePath(`/eventos/${id}`);
-  revalidatePath("/agenda");
   redirect(`/eventos/${id}/novo?step=3`);
 }
 
@@ -123,15 +133,20 @@ export async function wizardStep3(id: string, formData: FormData): Promise<void>
     redirect(`/eventos/${id}/novo?step=3&error=${encodeURIComponent("Informe o demandante do evento.")}`);
   }
 
-  await repository.events.update(session, id, {
-    demandante,
-    contatoDemandante: String(formData.get("contatoDemandante") ?? "") || undefined,
-    responsavelId: String(formData.get("responsavelId") ?? "") || session.userId,
-    publicoAlvo: String(formData.get("publicoAlvo") ?? "") || undefined,
-    restrito: formData.get("restrito") === "on",
-    estrategico: formData.get("estrategico") === "on",
-  });
-  revalidatePath(`/eventos/${id}`);
+  try {
+    await repository.events.update(session, id, {
+      demandante,
+      contatoDemandante: String(formData.get("contatoDemandante") ?? "") || undefined,
+      responsavelId: String(formData.get("responsavelId") ?? "") || session.userId,
+      publicoAlvo: String(formData.get("publicoAlvo") ?? "") || undefined,
+      restrito: formData.get("restrito") === "on",
+      estrategico: formData.get("estrategico") === "on",
+    });
+    revalidatePath(`/eventos/${id}`);
+  } catch (err) {
+    if (isRedirectError(err)) throw err;
+    redirect(`/eventos/${id}/novo?step=3&error=${encodeURIComponent(errorMessage(err))}`);
+  }
   redirect(`/eventos/${id}/novo?step=4`);
 }
 
@@ -139,15 +154,20 @@ export async function wizardStep4(id: string, formData: FormData): Promise<void>
   const session = await requireAuthSession();
   const repository = getRepository();
 
-  await repository.events.update(session, id, {
-    escopo: String(formData.get("escopo") ?? "") || undefined,
-    segmento: String(formData.get("segmento") ?? "") || undefined,
-    classificacao: String(formData.get("classificacao") ?? "") || undefined,
-    detalhesPlanejamento: String(formData.get("detalhesPlanejamento") ?? "") || undefined,
-    jornadaParticipante: String(formData.get("jornadaParticipante") ?? "") || undefined,
-    previstoOrcamento: formData.get("previstoOrcamento") === "on",
-  });
-  revalidatePath(`/eventos/${id}`);
+  try {
+    await repository.events.update(session, id, {
+      escopo: String(formData.get("escopo") ?? "") || undefined,
+      segmento: String(formData.get("segmento") ?? "") || undefined,
+      classificacao: String(formData.get("classificacao") ?? "") || undefined,
+      detalhesPlanejamento: String(formData.get("detalhesPlanejamento") ?? "") || undefined,
+      jornadaParticipante: String(formData.get("jornadaParticipante") ?? "") || undefined,
+      previstoOrcamento: formData.get("previstoOrcamento") === "on",
+    });
+    revalidatePath(`/eventos/${id}`);
+  } catch (err) {
+    if (isRedirectError(err)) throw err;
+    redirect(`/eventos/${id}/novo?step=4&error=${encodeURIComponent(errorMessage(err))}`);
+  }
   redirect(`/eventos/${id}/novo?step=5`);
 }
 
@@ -155,16 +175,21 @@ export async function wizardFinish(id: string): Promise<void> {
   const session = await requireAuthSession();
   const repository = getRepository();
 
-  // Quem só tem "create_event" (Operador) conclui o cadastro, mas o
-  // evento permanece em rascunho: avançar o status é exclusivo de quem
-  // tem "create_edit_event" (Gestor/Admin), que faz a revisão depois.
-  if (can(session.perfil, "create_edit_event")) {
-    await repository.events.updateStatus(session, id, "planejamento");
-    revalidatePath("/dashboard");
-    revalidatePath("/agenda");
-  }
+  try {
+    // Quem só tem "create_event" (Operador) conclui o cadastro, mas o
+    // evento permanece em rascunho: avançar o status é exclusivo de quem
+    // tem "create_edit_event" (Gestor/Admin), que faz a revisão depois.
+    if (can(session.perfil, "create_edit_event")) {
+      await repository.events.updateStatus(session, id, "planejamento");
+      revalidatePath("/dashboard");
+      revalidatePath("/agenda");
+    }
 
-  revalidatePath(`/eventos/${id}`);
-  revalidatePath("/eventos");
+    revalidatePath(`/eventos/${id}`);
+    revalidatePath("/eventos");
+  } catch (err) {
+    if (isRedirectError(err)) throw err;
+    redirect(`/eventos/${id}/novo?step=5&error=${encodeURIComponent(errorMessage(err))}`);
+  }
   redirect(`/eventos/${id}?created=1`);
 }

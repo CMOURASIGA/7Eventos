@@ -123,7 +123,7 @@ export function generateSeed(): SeedData {
       configuracoes: {
         corPrimaria: "#003b73",
         corSecundaria: "#00aeef",
-        logoUrl: "/branding/consult-eventos.svg",
+        logoUrl: "/consult-services-logo-quadrada.png",
         fusoHorario: "America/Sao_Paulo",
       },
       createdAt: nowIso(-400),
