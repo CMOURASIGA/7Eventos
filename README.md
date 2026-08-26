@@ -17,8 +17,8 @@ Auth, RLS). Ver [`docs/adr/ADR-001-stack-e-ambientes.md`](docs/adr/ADR-001-stack
 | Branch | Fonte de dados | Uso |
 |---|---|---|
 | `main` | Supabase (oficial) | Base oficial do sistema. |
-| `develop` | Mock (demonstração) | Demonstrações comerciais com dados fictícios ricos e reiniciáveis. |
-| `claude/eventos-feature-dev-eiz4b5` | Ambas (configurável) | Desenvolvimento. |
+| `develop` | Mock por padrão, Supabase de desenvolvimento quando provisionado | Integração contínua e homologação técnica. |
+| `demo` | Mock obrigatório | Demonstrações comerciais completas com dados fictícios ricos e reiniciáveis. |
 
 ## Rodando localmente
 
@@ -35,6 +35,17 @@ Live", cada uma com usuários em todos os perfis).
 Para restaurar a base de demonstração ao estado inicial a qualquer
 momento, use o botão **"Restaurar dados de demo"** no cabeçalho da
 aplicação (ou reinicie o servidor).
+
+## Whitelabel
+
+O Administrador da empresa acessa **Sistema > Identidade visual** para
+configurar logo, cor principal e cor de destaque. A identidade é
+aplicada ao menu, cabeçalho, botões, foco e indicadores, preservando
+7Eventos e Consult Services como produto e plataforma. O modo demo já
+traz duas empresas com identidades diferentes para apresentação.
+
+Detalhes de ambientes, Storage e futura ativação no Supabase estão em
+[`docs/WHITELABEL_E_AMBIENTES.md`](docs/WHITELABEL_E_AMBIENTES.md).
 
 ### Ligando o Supabase oficial
 

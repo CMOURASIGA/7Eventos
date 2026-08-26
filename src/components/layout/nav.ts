@@ -4,7 +4,7 @@ import type { Role } from "@/lib/domain/types";
 export interface NavItem {
   label: string;
   href: string;
-  icon: "dashboard" | "calendar" | "events" | "spaces" | "reservations" | "reports" | "audit" | "users" | "suppliers" | "participants" | "bell";
+  icon: "dashboard" | "calendar" | "events" | "spaces" | "reservations" | "reports" | "audit" | "users" | "suppliers" | "participants" | "bell" | "settings";
   section: "Principal" | "Gestão" | "Análise" | "Sistema";
   /** Quando definido, item só aparece se `can(perfil, capability)` for verdadeiro. */
   capability?: Capability;
@@ -22,6 +22,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Relatórios", href: "/relatorios", icon: "reports", section: "Análise", capability: "view_reports" },
   { label: "Auditoria", href: "/auditoria", icon: "audit", section: "Análise", capability: "view_audit" },
   { label: "Usuários", href: "/administracao/usuarios", icon: "users", section: "Sistema", capability: "manage_company_users" },
+  { label: "Identidade visual", href: "/administracao/identidade-visual", icon: "settings", section: "Sistema", capability: "manage_company_settings" },
 ];
 
 export function navItemsForRole(role: Role, canFn: (role: Role, capability: Capability) => boolean): NavItem[] {

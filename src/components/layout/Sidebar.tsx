@@ -2,17 +2,20 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { Role } from "@/lib/domain/types";
+import type { Company, Role } from "@/lib/domain/types";
 import { can } from "@/lib/domain/permissions";
 import { NAV_ITEMS } from "./nav";
 import { ICONS } from "./icons";
+import { BrandLogo } from "./BrandLogo";
 
 export function Sidebar({
   role,
+  company,
   isMobileOpen,
   onCloseMobile,
 }: {
   role: Role;
+  company: Company | null;
   isMobileOpen: boolean;
   onCloseMobile: () => void;
 }) {
@@ -27,10 +30,12 @@ export function Sidebar({
       )}
       <aside className={`sidebar-shell overflow-y-auto md:min-h-screen md:self-stretch ${isMobileOpen ? "is-open" : ""}`}>
         <div className="sidebar-brand-panel relative">
-          <div className="sidebar-brand-logo-frame">7</div>
+          <div className="sidebar-brand-logo-frame">
+            <BrandLogo company={company} compact />
+          </div>
           <div className="sidebar-rail-only leading-tight">
             <p className="text-sm font-semibold text-[var(--foreground)]">7Eventos</p>
-            <p className="text-[11px] text-fg-muted">Consult Services</p>
+            <p className="text-[11px] text-fg-muted truncate">{company?.nomeFantasia ?? "Consult Services"}</p>
           </div>
           <button
             type="button"

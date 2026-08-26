@@ -7,6 +7,8 @@ import { loginAsDemoUser, loginWithPassword } from "@/lib/auth/actions";
 import { Card } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/primitives";
+import { BrandLogo } from "@/components/layout/BrandLogo";
+import { brandingStyle } from "@/lib/branding";
 
 export default async function LoginPage() {
   const session = await getAuthSession();
@@ -52,10 +54,15 @@ async function DemoLogin() {
 
       <div className="mt-6 space-y-6 max-h-[60vh] overflow-y-auto pr-1">
         {companies.map((company) => (
-          <div key={company.id}>
-            <p className="text-xs font-semibold uppercase tracking-wide text-fg-muted mb-2">
-              {company.nomeFantasia}
-            </p>
+          <div key={company.id} style={brandingStyle(company)}>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="h-8 w-8 rounded-lg border border-border bg-white p-1 flex items-center justify-center">
+                <BrandLogo company={company} compact />
+              </span>
+              <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">
+                {company.nomeFantasia}
+              </p>
+            </div>
             <div className="space-y-2">
               {store.users
                 .filter((u) => u.companyId === company.id)

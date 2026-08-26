@@ -51,15 +51,14 @@ retrabalho de UI.
 | Branch | Papel |
 |---|---|
 | `main` | Base oficial do sistema. Não recebe commits diretos desta sessão; só merge após aprovação explícita. |
-| `develop` | Ambiente de demonstração (`DATA_MODE=mock`), com dados fictícios ricos e reiniciáveis, usado para apresentações comerciais. |
-| `claude/eventos-feature-dev-eiz4b5` | Branch de desenvolvimento real. Todo o código desta fase foi implementado aqui. |
+| `develop` | Desenvolvimento e homologação. Usa `DATA_MODE=mock` enquanto o Supabase de desenvolvimento não estiver provisionado. |
+| `demo` | Demonstração comercial, sempre com `DATA_MODE=mock`, dados fictícios ricos e reiniciáveis. |
 
 ## Consequências
 
-- Nenhum dado fictício chega a `main`/produção (RN da Fase 1: "não
-  utilizar dados fictícios em produção") — o modo mock é uma
-  implementação de infraestrutura isolada, nunca ativada por padrão em
-  produção.
+- Nenhum dado fictício é ativado em `main`/produção. O código do
+  adaptador mock pode existir na base compartilhada, mas a configuração
+  de Production deve obrigatoriamente usar `DATA_MODE=supabase`.
 - Ativar o ambiente oficial é uma mudança de configuração
   (`DATA_MODE=supabase` + variáveis de conexão), não uma reescrita de
   código.

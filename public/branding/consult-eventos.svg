@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Consult Eventos">
+  <rect width="64" height="64" rx="14" fill="#003b73"/>
+  <path d="M17 17h30v8H29v7h16v8H29v7h18v8H17z" fill="#fff"/>
+  <circle cx="49" cy="15" r="6" fill="#00aeef"/>
+</svg>

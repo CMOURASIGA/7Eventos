@@ -34,6 +34,8 @@ export interface Company {
   status: "ativa" | "suspensa";
   configuracoes: {
     corPrimaria?: string;
+    corSecundaria?: string;
+    logoUrl?: string;
     fusoHorario: string;
   };
   createdAt: string;

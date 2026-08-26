@@ -18,7 +18,7 @@ export const metadata: Metadata = {
     "Planeje. Organize. Execute. Aprenda. Plataforma Consult Services 7Eventos para gestão completa de eventos.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
       lang="pt-BR"

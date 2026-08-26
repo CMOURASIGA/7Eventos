@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 import type { Company, Role, User } from "@/lib/domain/types";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
+import { brandingStyle } from "@/lib/branding";
 
 /**
  * Combina Sidebar + Header mantendo o estado da gaveta de navegação
@@ -26,8 +27,8 @@ export function AppChrome({
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   return (
-    <div className="min-h-screen w-full md:flex md:items-stretch">
-      <Sidebar role={role} isMobileOpen={mobileNavOpen} onCloseMobile={() => setMobileNavOpen(false)} />
+    <div className="app-brand-shell min-h-screen w-full md:flex md:items-stretch" style={brandingStyle(company)}>
+      <Sidebar company={company} role={role} isMobileOpen={mobileNavOpen} onCloseMobile={() => setMobileNavOpen(false)} />
       <div className="flex-1 flex flex-col min-w-0">
         <Header
           user={user}

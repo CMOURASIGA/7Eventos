@@ -183,6 +183,10 @@ export interface Repository {
   companies: {
     list(session: AuthSession): Promise<Company[]>;
     get(session: AuthSession, id: string): Promise<Company | null>;
+    updateBranding(
+      session: AuthSession,
+      input: Pick<Company["configuracoes"], "corPrimaria" | "corSecundaria" | "logoUrl">,
+    ): Promise<Company>;
   };
   users: {
     list(session: AuthSession): Promise<User[]>;
