@@ -35,7 +35,7 @@ export function Sidebar({
         style={{ width: 256 }}
       >
         <div className="relative border-b border-white/15 px-4 pb-6 pt-4">
-          <div className="flex h-[144px] w-full items-center justify-center overflow-hidden rounded-xl bg-white px-1 py-1 shadow-sm">
+          <div className="flex h-[144px] w-full items-center justify-center overflow-hidden rounded-xl border border-slate-200/90 bg-white px-1 py-1 shadow-sm ring-1 ring-black/5">
             <BrandLogo company={company} />
           </div>
           <button
