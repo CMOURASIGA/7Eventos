@@ -4,12 +4,11 @@ export function BrandLogo({ company, compact = false }: { company: Company | nul
   const logoUrl = company?.configuracoes.logoUrl;
   if (logoUrl) {
     return (
-      // URL administrada pela própria empresa. A tag preserva suporte a logos whitelabel remotas sem lista global de hosts.
       // eslint-disable-next-line @next/next/no-img-element
       <img
         src={logoUrl}
         alt={`Logo ${company.configuracoes.nomeExibido ?? company.nomeFantasia}`}
-        className={compact ? "max-h-12 max-w-full object-contain" : "max-h-24 max-w-full object-contain"}
+        className={compact ? "max-h-12 max-w-full object-contain" : "max-h-[118px] max-w-[64%] object-contain object-center"}
       />
     );
   }
