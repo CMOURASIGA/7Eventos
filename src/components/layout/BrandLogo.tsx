@@ -8,7 +8,7 @@ export function BrandLogo({ company, compact = false }: { company: Company | nul
       <img
         src={logoUrl}
         alt={`Logo ${company.configuracoes.nomeExibido ?? company.nomeFantasia}`}
-        className={compact ? "max-h-12 max-w-full object-contain" : "max-h-[132px] w-[99%] object-contain object-center"}
+        className={compact ? "max-h-12 max-w-full object-contain" : "max-h-[118px] max-w-[64%] object-contain object-center"}
       />
     );
   }
