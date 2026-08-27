@@ -121,9 +121,10 @@ export function generateSeed(): SeedData {
       documento: "12.345.678/0001-90",
       status: "ativa",
       configuracoes: {
+        nomeExibido: "Consult Services Tecnologia",
         corPrimaria: "#003b73",
         corSecundaria: "#00aeef",
-        logoUrl: "/consult-services-logo-quadrada.png",
+        logoUrl: "/consult-services-logo-retangular.png",
         fusoHorario: "America/Sao_Paulo",
       },
       createdAt: nowIso(-400),
@@ -136,6 +137,7 @@ export function generateSeed(): SeedData {
       documento: "98.765.432/0001-10",
       status: "ativa",
       configuracoes: {
+        nomeExibido: "Aurora Live",
         corPrimaria: "#6d28d9",
         corSecundaria: "#f59e0b",
         logoUrl: "/branding/aurora-live.svg",

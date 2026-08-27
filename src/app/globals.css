@@ -189,20 +189,20 @@ body {
 .sidebar-brand-panel {
   display: flex;
   align-items: center;
-  gap: 10px;
-  height: 72px;
+  justify-content: center;
+  height: 136px;
   background: #ffffff;
   border-bottom: 1px solid var(--border);
-  padding: 12px 16px;
+  padding: 20px;
+  border-radius: 0 0 16px 16px;
 }
 
 .sidebar-brand-logo-frame {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  flex: 0 0 40px;
+  width: 100%;
+  height: 92px;
 }
 
 .sidebar-product {
@@ -233,6 +233,37 @@ body {
   font-size: 10px;
   font-weight: 500;
   line-height: 1.4;
+}
+
+.sidebar-demo-card {
+  margin: 0 16px 14px;
+  padding: 13px 14px;
+  border: 1px solid color-mix(in srgb, var(--brand-500) 58%, white);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+.sidebar-demo-title {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.sidebar-demo-copy {
+  margin: 7px 0 10px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.sidebar-demo-card button {
+  border-color: rgba(255, 255, 255, 0.45);
+  background: transparent;
+  color: #ffffff;
+  text-decoration: underline;
 }
 
 .sidebar-section-label {
@@ -291,7 +322,12 @@ body {
   }
   .sidebar-brand-panel {
     justify-content: center;
-    padding: 12px 0;
+    height: 100px;
+    padding: 12px 8px;
+    border-radius: 0 0 12px 12px;
+  }
+  .sidebar-brand-logo-frame {
+    height: 68px;
   }
   .sidebar-product {
     padding: 10px 0;
@@ -308,8 +344,9 @@ body {
     display: revert;
   }
   .sidebar-brand-panel {
-    justify-content: flex-start;
-    padding: 12px 16px;
+    justify-content: center;
+    height: 136px;
+    padding: 20px;
   }
   .sidebar-product {
     text-align: left;

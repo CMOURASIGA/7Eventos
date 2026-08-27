@@ -8,7 +8,7 @@ const COOKIE_NAME = "7eventos-demo-branding";
 
 type BrandingOverride = {
   companyId: string;
-  configuracoes: Pick<Company["configuracoes"], "corPrimaria" | "corSecundaria" | "logoUrl">;
+  configuracoes: Pick<Company["configuracoes"], "nomeExibido" | "corPrimaria" | "corSecundaria" | "logoUrl">;
 };
 
 /**
@@ -35,6 +35,7 @@ export async function setDemoBrandingOverride(company: Company): Promise<void> {
   const payload: BrandingOverride = {
     companyId: company.id,
     configuracoes: {
+      nomeExibido: company.configuracoes.nomeExibido,
       corPrimaria: company.configuracoes.corPrimaria,
       corSecundaria: company.configuracoes.corSecundaria,
       logoUrl: company.configuracoes.logoUrl,

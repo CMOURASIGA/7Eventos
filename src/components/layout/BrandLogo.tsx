@@ -8,8 +8,8 @@ export function BrandLogo({ company, compact = false }: { company: Company | nul
       // eslint-disable-next-line @next/next/no-img-element
       <img
         src={logoUrl}
-        alt={`Logo ${company.nomeFantasia}`}
-        className={compact ? "h-8 w-8 object-contain" : "h-10 w-10 object-contain"}
+        alt={`Logo ${company.configuracoes.nomeExibido ?? company.nomeFantasia}`}
+        className={compact ? "max-h-12 max-w-full object-contain" : "max-h-24 max-w-full object-contain"}
       />
     );
   }

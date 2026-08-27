@@ -33,6 +33,7 @@ export interface Company {
   documento: string;
   status: "ativa" | "suspensa";
   configuracoes: {
+    nomeExibido?: string;
     corPrimaria?: string;
     corSecundaria?: string;
     logoUrl?: string;

@@ -185,7 +185,7 @@ export interface Repository {
     get(session: AuthSession, id: string): Promise<Company | null>;
     updateBranding(
       session: AuthSession,
-      input: Pick<Company["configuracoes"], "corPrimaria" | "corSecundaria" | "logoUrl">,
+      input: Pick<Company["configuracoes"], "nomeExibido" | "corPrimaria" | "corSecundaria" | "logoUrl">,
     ): Promise<Company>;
   };
   users: {

@@ -28,7 +28,7 @@ export function AppChrome({
 
   return (
     <div className="app-brand-shell min-h-screen w-full md:flex md:items-stretch" style={brandingStyle(company)}>
-      <Sidebar company={company} role={role} isMobileOpen={mobileNavOpen} onCloseMobile={() => setMobileNavOpen(false)} />
+      <Sidebar company={company} role={role} isDemo={isDemo} isMobileOpen={mobileNavOpen} onCloseMobile={() => setMobileNavOpen(false)} />
       <div className="flex-1 flex flex-col min-w-0">
         <Header
           user={user}

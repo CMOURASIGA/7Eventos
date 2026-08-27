@@ -7,15 +7,18 @@ import { can } from "@/lib/domain/permissions";
 import { NAV_ITEMS } from "./nav";
 import { ICONS } from "./icons";
 import { BrandLogo } from "./BrandLogo";
+import { DemoResetButton } from "./DemoResetButton";
 
 export function Sidebar({
   role,
   company,
+  isDemo,
   isMobileOpen,
   onCloseMobile,
 }: {
   role: Role;
   company: Company | null;
+  isDemo: boolean;
   isMobileOpen: boolean;
   onCloseMobile: () => void;
 }) {
@@ -31,11 +34,7 @@ export function Sidebar({
       <aside className={`sidebar-shell overflow-y-auto md:min-h-screen md:self-stretch ${isMobileOpen ? "is-open" : ""}`}>
         <div className="sidebar-brand-panel relative">
           <div className="sidebar-brand-logo-frame">
-            <BrandLogo company={company} compact />
-          </div>
-          <div className="sidebar-rail-only leading-tight">
-            <p className="text-sm font-semibold text-[var(--foreground)]">7Eventos</p>
-            <p className="text-[11px] text-fg-muted truncate">{company?.nomeFantasia ?? "Consult Services"}</p>
+            <BrandLogo company={company} />
           </div>
           <button
             type="button"
@@ -50,8 +49,16 @@ export function Sidebar({
         <div className="sidebar-product sidebar-rail-only">
           <p className="sidebar-product-name">7Eventos</p>
           <p className="sidebar-product-subtitle">Gestão de eventos corporativos</p>
-          <p className="sidebar-product-owner">Uma plataforma Consult Services</p>
+          <p className="sidebar-product-owner">Uma plataforma Consult Services Tecnologia</p>
         </div>
+
+        {isDemo && (
+          <div className="sidebar-demo-card sidebar-rail-only">
+            <p className="sidebar-demo-title">Modo demonstração</p>
+            <p className="sidebar-demo-copy">Dados fictícios usados somente neste ambiente.</p>
+            {can(role, "manage_company_settings") && <DemoResetButton />}
+          </div>
+        )}
 
         <nav className="mt-4 flex flex-col gap-5 px-3 pb-5">
           {sections.map((section) => (
