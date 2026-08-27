@@ -34,8 +34,8 @@ export function Sidebar({
         className={`sidebar-shell overflow-y-auto md:min-h-screen md:self-stretch ${isMobileOpen ? "is-open" : ""}`}
         style={{ width: 256 }}
       >
-        <div className="sidebar-brand-panel relative" style={{ height: 144, padding: 16 }}>
-          <div className="sidebar-brand-logo-frame" style={{ height: 132 }}>
+        <div className="relative border-b border-white/15 px-4 pb-6 pt-4">
+          <div className="flex h-[144px] w-full items-center justify-center overflow-hidden rounded-xl bg-white px-1 py-1 shadow-sm">
             <BrandLogo company={company} />
           </div>
           <button
@@ -46,18 +46,18 @@ export function Sidebar({
           >
             ×
           </button>
-        </div>
 
-        <div className="sidebar-product">
-          <div className="flex items-center gap-2">
-            <p className="sidebar-product-name">7Eventos</p>
-            {isDemo && (
-              <span className="rounded-md border border-amber-300/50 bg-amber-300/15 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-amber-200">
-                Demo
-              </span>
-            )}
+          <div className="mt-6 px-2">
+            <div className="flex items-center gap-2">
+              <p className="sidebar-product-name">7Eventos</p>
+              {isDemo && (
+                <span className="rounded-md border border-amber-300/50 bg-amber-300/15 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-amber-200">
+                  Demo
+                </span>
+              )}
+            </div>
+            <p className="sidebar-product-subtitle">Gestão de eventos corporativos</p>
           </div>
-          <p className="sidebar-product-subtitle">Gestão de eventos corporativos</p>
         </div>
 
         <nav className="flex flex-col gap-5 px-3 py-4">
