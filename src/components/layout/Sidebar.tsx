@@ -30,9 +30,12 @@ export function Sidebar({
       {isMobileOpen && (
         <button type="button" aria-label="Fechar menu" className="sidebar-backdrop" onClick={onCloseMobile} />
       )}
-      <aside className={`sidebar-shell overflow-y-auto md:min-h-screen md:self-stretch ${isMobileOpen ? "is-open" : ""}`}>
-        <div className="sidebar-brand-panel relative">
-          <div className="sidebar-brand-logo-frame">
+      <aside
+        className={`sidebar-shell overflow-y-auto md:min-h-screen md:self-stretch ${isMobileOpen ? "is-open" : ""}`}
+        style={{ width: 256 }}
+      >
+        <div className="sidebar-brand-panel relative" style={{ height: 144, padding: 16 }}>
+          <div className="sidebar-brand-logo-frame" style={{ height: 132 }}>
             <BrandLogo company={company} />
           </div>
           <button
@@ -48,7 +51,11 @@ export function Sidebar({
         <div className="sidebar-product">
           <div className="flex items-center gap-2">
             <p className="sidebar-product-name">7Eventos</p>
-            {isDemo && <span className="sidebar-demo-badge">Demo</span>}
+            {isDemo && (
+              <span className="rounded-md border border-amber-300/50 bg-amber-300/15 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-amber-200">
+                Demo
+              </span>
+            )}
           </div>
           <p className="sidebar-product-subtitle">Gestão de eventos corporativos</p>
         </div>
